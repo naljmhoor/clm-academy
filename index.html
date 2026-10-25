@@ -8,5 +8,18 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Fallback for static hosts that serve this repository's raw files (e.g. GitHub Pages set to
+      // "Deploy from a branch"): the TypeScript source can't run there, so open the self-contained
+      // build committed at the repository root instead. Never triggers on localhost or in a Vite build
+      // (Vite rewrites the source module reference above).
+      (function () {
+        var local = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) || location.protocol === 'file:';
+        // Selector is split so the compiled page never contains the source path (checked in CI).
+        if (!local && document.querySelector('script[src="/' + 'src' + '/main.tsx"]')) {
+          location.replace('./clm-academy.html' + location.hash);
+        }
+      })();
+    </script>
   </body>
 </html>

@@ -36,3 +36,8 @@ mkdirSync(outDir, { recursive: true });
 const out = join(outDir, 'clm-academy.html');
 writeFileSync(out, html);
 console.log(`Wrote ${out} (${(Buffer.byteLength(html) / 1024).toFixed(0)} KB)`);
+
+// Also keep a copy at the repository root: static hosts that serve the raw repository
+// (GitHub Pages "Deploy from a branch") are redirected to it by index.html.
+writeFileSync(join(root, 'clm-academy.html'), html);
+console.log('Updated clm-academy.html at the repository root');
