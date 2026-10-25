@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-white text-ink antialiased;
+    font-size: 14px;
+  }
+  /* Arabic runs inside LTR chrome read naturally with plaintext bidi. */
+  .bidi {
+    unicode-bidi: plaintext;
+    text-align: left;
+  }
+  :focus-visible {
+    outline: 2px solid #0a0a0a;
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .link {
+    @apply underline decoration-ink/40 underline-offset-2 hover:decoration-ink;
+  }
+  .label {
+    @apply text-xs text-ink-muted;
+  }
+  .input {
+    @apply h-9 w-full rounded-md border border-line bg-white px-3 text-sm placeholder:text-ink-faint focus:border-ink/40 focus:outline-none disabled:bg-surface-sunken disabled:text-ink-muted;
+  }
+  .input-error {
+    @apply border-red-500 focus:border-red-500;
+  }
+}
+
+@keyframes flash-ring {
+  0% { box-shadow: 0 0 0 0 rgba(67, 56, 202, 0.55); }
+  100% { box-shadow: 0 0 0 10px rgba(67, 56, 202, 0); }
+}
+.flash-target {
+  animation: flash-ring 1.1s ease-out 2;
+}
