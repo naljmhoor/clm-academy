@@ -87,3 +87,9 @@ Tours target `data-tour` anchors in the CLM UI. To add a tour for a new case typ
 **Deferred — no confirmed requirements or screens**
 - Dashboard, Individuals, Lifecycle / AML / Operations modules and the full Entity Profile (users, timeline, group structure).
 - Notifications content, case reopening, escalation outcome. See the open questions in `docs/ANALYSIS.md`.
+
+## GitHub Pages deployment
+
+In **Settings → Pages → Build and deployment**, select **GitHub Actions** as the source. Do not publish the `main` branch directly: its `index.html` is Vite's source entry and cannot run without compilation. A branch-based Pages build can overwrite a successful production deployment with this source HTML, resulting in a white screen.
+
+The `Deploy to GitHub Pages` workflow runs the tests, builds the app, validates the compiled entry, and publishes only `dist/`. Hash routing and relative asset URLs support the `/clm-academy/` project path without changing application behavior.

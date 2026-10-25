@@ -27,6 +27,18 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - name: Verify compiled Pages entry
+        run: |
+          node --input-type=module <<'JS'
+          import { readFileSync, existsSync } from 'node:fs';
+          const html = readFileSync('dist/index.html', 'utf8');
+          if (html.includes('/src/')) throw new Error('Pages must publish compiled output, not source');
+          const assets = [...html.matchAll(/(?:src|href)="\.\/([^"#]+)"/g)];
+          if (!assets.some(([, path]) => path.endsWith('.js'))) throw new Error('Missing compiled JavaScript');
+          for (const [, path] of assets) {
+            if (!existsSync(`dist/${path}`)) throw new Error(`Missing asset: ${path}`);
+          }
+          JS
       - uses: actions/configure-pages@v5
         with:
           enablement: true
