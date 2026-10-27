@@ -58,7 +58,14 @@ server/          ASSISTANT_INTEGRATION.md — contract for a real AI backend
 docs/ANALYSIS.md source analysis, discrepancy log, open questions
 ```
 
-Tours target `data-tour` anchors in the CLM UI. To add a tour for a new case type, add anchors to its components and a config in `src/training/tours/tours.ts`. Action steps use `done(ctx)` predicates evaluated against live state.
+### Guided walkthroughs
+
+- **Structure and logic** live in `src/training/tours/tours.ts`: targets (`data-tour` anchors), routes, and `done(ctx)` / `wrong(ctx)` checks evaluated against live state.
+- **Wording** lives in `src/training/tours/content/en.ts` and `content/ar.ts`, keyed by the same tour and step ids. Shared controls (Back, Next, Skip, etc.) are in `i18n.ts`.
+- **Language:** trainees choose English or العربية in the tour card or on the Guided learning page. The choice is saved, and it changes the walkthrough text only; the CLM screens always stay in English. Arabic text keeps CLM labels such as Status and In Progress in English so they match the screen.
+- **Missing translations** fall back to English with a console warning in development. A unit test fails if any step lacks Arabic text.
+- **Card placement** is handled by `placement.ts`. The card never covers the highlighted control, an open dropdown, a dialog or the Ask CLM panel. When no space fits, it docks to a screen corner, then narrows or collapses. The dim overlay never captures clicks on the highlighted control, and dropdowns and dialogs open above it.
+- **Adding a tour:** add anchors to the components, a config in `tours.ts`, and entries in both content files.
 
 ## Implementation status
 

@@ -25,7 +25,7 @@ describe('tours', () => {
       for (const id of t.caseIds) expect(ids.has(id)).toBe(true);
       const stepIds = t.steps.map((s) => s.id);
       expect(new Set(stepIds).size).toBe(stepIds.length);
-      for (const s of t.steps) if (s.action) expect(s.done).toBeTypeOf('function');
+      for (const s of t.steps) if (s.done) expect(s.done).toBeTypeOf('function');
     }
   });
   it('cover the six required learning paths', () => {

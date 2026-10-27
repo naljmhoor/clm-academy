@@ -27,6 +27,8 @@ interface AcademyState {
   practice: Record<string, PracticeProgress>;
   welcomed: boolean;
   helpHints: boolean;
+  /** Language of the guided walkthroughs only; the CLM simulator stays in English. */
+  tourLang: 'en' | 'ar';
 
   // Active session (persisted so a refresh resumes where the trainee was)
   activeTour: { id: string; step: number } | null;
@@ -52,6 +54,7 @@ interface AcademyState {
   openAssistant: (articleId?: string | null) => void;
   closeAssistant: () => void;
   setHelpHints: (v: boolean) => void;
+  setTourLang: (l: 'en' | 'ar') => void;
   setWelcomed: () => void;
   setLocation: (pathname: string, search: string) => void;
   resetProgress: () => void;
@@ -66,6 +69,7 @@ export const useAcademy = create<AcademyState>()(
       practice: {},
       welcomed: false,
       helpHints: true,
+      tourLang: 'en',
       activeTour: null,
       activePractice: null,
       assistantOpen: false,
@@ -115,13 +119,14 @@ export const useAcademy = create<AcademyState>()(
       openAssistant: (articleId = null) => set({ assistantOpen: true, assistantArticle: articleId }),
       closeAssistant: () => set({ assistantOpen: false, assistantArticle: null }),
       setHelpHints: (helpHints) => set({ helpHints }),
+      setTourLang: (tourLang) => set({ tourLang }),
       setWelcomed: () => set({ welcomed: true }),
       setLocation: (pathname, search) => set({ location: { pathname, search } }),
       resetProgress: () => set({ tours: {}, practice: {}, activeTour: null, activePractice: null }),
     }),
     {
       name: 'clm-academy:progress:v1',
-      partialize: (s) => ({ tours: s.tours, practice: s.practice, welcomed: s.welcomed, helpHints: s.helpHints, activeTour: s.activeTour, activePractice: s.activePractice }),
+      partialize: (s) => ({ tours: s.tours, practice: s.practice, welcomed: s.welcomed, helpHints: s.helpHints, tourLang: s.tourLang, activeTour: s.activeTour, activePractice: s.activePractice }),
     },
   ),
 );

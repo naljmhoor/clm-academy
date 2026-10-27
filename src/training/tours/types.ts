@@ -9,10 +9,12 @@ export interface TourCtx {
   me: string;
 }
 
+/**
+ * Structure and behaviour of one step. Wording is not here: it comes from the
+ * localized content files (content/en.ts, content/ar.ts) using the same step id.
+ */
 export interface TourStep {
   id: string;
-  title: string;
-  body: string;
   /** data-tour anchor to spotlight. Omit for a centred explanation card. */
   target?: string;
   /** Where the step happens; the engine navigates there when the step starts. */
@@ -21,17 +23,14 @@ export interface TourStep {
   expectRoute?: RegExp;
   /** Runs once when the step starts (e.g. set the queue search). */
   prepare?: () => void;
-  /** Instruction for an action step. The step waits until done() is true. */
-  action?: string;
+  /** Present on action steps: the step waits until this returns true. */
   done?: (ctx: TourCtx) => boolean;
-  /** Returns feedback when the trainee did something that defeats the step. */
-  wrong?: (ctx: TourCtx) => string | undefined;
+  /** True when the trainee did something that defeats the step (message: content `wrong`). */
+  wrong?: (ctx: TourCtx) => boolean;
 }
 
 export interface Tour {
   id: string;
-  title: string;
-  summary: string;
   minutes: number;
   level: 'Beginner' | 'Intermediate';
   /** Cases restored to their starting state when the tour starts or restarts. */

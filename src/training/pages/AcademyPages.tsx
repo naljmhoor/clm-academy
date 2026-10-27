@@ -5,6 +5,7 @@ import { ArrowRight, BookOpen, Check, Compass, Dumbbell, GraduationCap, MessageC
 import { useAcademy } from '../academyStore';
 import { TOURS } from '../tours/tours';
 import { startTour } from '../tours/TourHost';
+import { tourText, tourUi, type TourLang } from '../tours/i18n';
 import { SCENARIOS } from '../practice/scenarios';
 import { startScenario } from '../practice/PracticePanel';
 import { ARTICLES, articleById, type Article } from '../knowledge/articles';
@@ -80,7 +81,7 @@ export function AcademyHome() {
         {continueTour && (
           <Button variant="academy" onClick={() => startTour(continueTour.id, p.tours[continueTour.id]?.status === 'started' ? p.tours[continueTour.id].step : 0)}>
             <PlayCircle className="h-4 w-4" />
-            {hasProgress ? `Continue learning: ${continueTour.title}` : 'Start learning'}
+            {hasProgress ? `Continue learning: ${tourText('en', continueTour.id).title}` : 'Start learning'}
           </Button>
         )}
         <Button onClick={() => navigate('/cases')}>
@@ -139,8 +140,8 @@ export function AcademyHome() {
                   {st === 'completed' ? <Check className="h-3.5 w-3.5" /> : i + 1}
                 </span>
                 <div className="flex-1">
-                  <div className="text-sm font-medium">{t.title}</div>
-                  <div className="text-xs text-ink-muted">{t.summary}</div>
+                  <div className="text-sm font-medium">{tourText('en', t.id).title}</div>
+                  <div className="text-xs text-ink-muted">{tourText('en', t.id).summary}</div>
                 </div>
                 <span className="text-xs text-ink-muted">{t.minutes} min</span>
               </li>
@@ -162,16 +163,40 @@ export function AcademyHome() {
   );
 }
 
+/** Walkthrough language switch (English | العربية). Affects tour guidance only, never the CLM screens. */
+export function TourLanguageSwitch() {
+  const lang = useAcademy((s) => s.tourLang);
+  const setTourLang = useAcademy((s) => s.setTourLang);
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      <span className="text-ink-muted">Walkthrough language</span>
+      <div role="group" aria-label="Walkthrough language" className="flex overflow-hidden rounded-md border border-line">
+        {(['en', 'ar'] as TourLang[]).map((l) => (
+          <button key={l} type="button" lang={l} aria-pressed={lang === l} onClick={() => setTourLang(l)} className={clsx('px-2.5 py-1 font-medium', lang === l ? 'bg-academy text-white' : 'hover:bg-surface-sunken')}>
+            {l === 'en' ? 'English' : 'العربية'}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function LearnPage() {
   const p = useProgress();
+  const lang = useAcademy((s) => s.tourLang);
+  const ui = tourUi(lang);
+  const rtl = lang === 'ar';
   return (
     <div className="mx-auto max-w-4xl px-6 py-8">
       <div className="flex items-end justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Guided learning</h1>
-          <p className="mt-1 text-sm text-ink-muted">Each tour runs inside the CLM simulator. Steps marked “Your turn” wait until you do the action.</p>
+          <p className="mt-1 text-sm text-ink-muted">Each tour runs inside the CLM simulator. Steps marked “Your turn” wait until you do the action. The CLM screens stay in English in both languages.</p>
         </div>
-        <ResetProgressButton />
+        <div className="flex flex-col items-end gap-2">
+          <TourLanguageSwitch />
+          <ResetProgressButton />
+        </div>
       </div>
       <div className="mt-6 space-y-3">
         {TOURS.map((t, i) => {
@@ -181,14 +206,14 @@ export function LearnPage() {
               <span className={clsx('flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold', st?.status === 'completed' ? 'bg-green-600 text-white' : 'bg-academy-soft text-academy')}>
                 {st?.status === 'completed' ? <Check className="h-4 w-4" /> : i + 1}
               </span>
-              <div className="flex-1">
+              <div className="flex-1" dir={rtl ? 'rtl' : 'ltr'} lang={lang} style={{ textAlign: rtl ? 'right' : 'left' }}>
                 <div className="flex items-center gap-2">
-                  <span className="font-semibold">{t.title}</span>
+                  <span className="font-semibold">{tourText(lang, t.id).title}</span>
                   <span className="text-xs text-ink-muted">
-                    {t.level} · {t.minutes} min · {t.steps.length} steps
+                    {t.level === 'Beginner' ? ui.beginner : ui.intermediate} · {ui.minutes(t.minutes)} · {ui.steps(t.steps.length)}
                   </span>
                 </div>
-                <p className="mt-0.5 text-sm text-ink-soft">{t.summary}</p>
+                <p className="mt-0.5 text-sm text-ink-soft">{tourText(lang, t.id).summary}</p>
                 {st?.status === 'started' && <p className="mt-1 text-xs text-academy">In progress — step {st.step + 1} of {t.steps.length}</p>}
                 {st?.status === 'completed' && <p className="mt-1 text-xs text-green-700">Completed</p>}
               </div>
