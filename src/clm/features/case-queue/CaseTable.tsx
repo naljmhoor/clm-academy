@@ -53,7 +53,7 @@ export function CaseTable({ rows }: { rows: QueueRow[] }) {
                 </td>
                 <td className={TD}>{CLIENT_TYPE_LABEL[entity.clientType]}</td>
                 <td className={TD}>
-                  <CaseTypeBadge />
+                  <CaseTypeBadge type={c.type} />
                 </td>
                 <td className={TD}>
                   <StatusControl c={c} />

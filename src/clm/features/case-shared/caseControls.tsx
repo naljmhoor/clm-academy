@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import clsx from 'clsx';
 import { Check, ChevronDown, ChevronsDown, ChevronsUp, Equal, Pause, Search, Timer } from 'lucide-react';
-import type { CaseRecord, CaseStatus, Priority } from '@/domain/types';
+import type { CaseRecord, CaseStatus, CaseType, Priority } from '@/domain/types';
+import { CASE_TYPE_META } from '@/mock/masterData';
 import { computeSla, slaChipLabel, type SlaStatus } from '@/domain/sla';
 import { STATUS_LABEL, STATUS_ORDER, transitionBlockReason } from '@/domain/transitions';
 import { useClm, useUsers } from '@/store/caseStore';
@@ -11,7 +12,7 @@ import { Avatar } from '@/clm/components/ui/misc';
 import { useStatusFlow } from './statusFlow';
 import { useNow } from './useNow';
 
-export const STATUS_TONE: Record<CaseStatus, Tone> = { open: 'neutral', in_progress: 'orange', need_info: 'purple', closed: 'black' };
+export const STATUS_TONE: Record<CaseStatus, Tone> = { open: 'neutral', in_progress: 'orange', need_info: 'purple', on_hold: 'blue', closed: 'black' };
 export const PRIORITY_TONE: Record<Priority, Tone> = { high: 'red', medium: 'orange', low: 'neutral' };
 export const PRIORITY_LABEL: Record<Priority, string> = { high: 'High', medium: 'Medium', low: 'Low' };
 export const SLA_TONE: Record<SlaStatus, Tone> = { on_track: 'green', at_risk: 'orange', breached: 'red', met: 'neutral' };
@@ -23,8 +24,8 @@ export function PriorityIcon({ p, className }: { p: Priority; className?: string
   return <ChevronsDown className={clsx(cls, 'text-ink')} />;
 }
 
-export function CaseTypeBadge() {
-  return <Badge tone="blue">Due Diligence</Badge>;
+export function CaseTypeBadge({ type = 'edd' }: { type?: CaseType }) {
+  return <Badge tone="blue">{CASE_TYPE_META[type].label}</Badge>;
 }
 
 export function ResolutionBadge({ c }: { c: Pick<CaseRecord, 'resolution'> }) {
@@ -79,7 +80,7 @@ export function StatusControl({ c, variant = 'pill' }: { c: CaseRecord; variant?
         <MenuList
           title="Change Status"
           close={close}
-          items={STATUS_ORDER.map((st) => {
+          items={STATUS_ORDER.filter((st) => st !== 'on_hold' || c.status === 'on_hold').map((st) => {
             const reason = transitionBlockReason(c.status, st);
             return {
               key: st,

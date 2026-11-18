@@ -18,14 +18,21 @@ import type {
   Resolution,
   SigningDocument,
   User,
+  Delegator,
+  BorrowerTask,
+  ComplianceRequest,
 } from '@/domain/types';
+import { yakeenNameFor } from '@/mock/seedLifecycle';
+import { permissionLabel } from '@/mock/masterData';
 import { STATUS_LABEL } from '@/domain/transitions';
 import { amlOverall } from '@/domain/eddRules';
 import { createSeed, CURRENT_USER_ID } from '@/mock/seed';
 import * as api from '@/mock/integrations';
 import { toast } from './toastStore';
 
-const STORAGE_KEY = 'clm-academy:data:v1';
+const STORAGE_KEY = 'clm-academy:data:v2';
+const DAY_MS = 86_400_000;
+export const WORK_FIRST_MESSAGE = 'Move this case to In Progress before working on it.';
 const PRIORITY_LABEL: Record<Priority, string> = { low: 'Low', medium: 'Medium', high: 'High' };
 
 let idSeq = 0;
@@ -38,7 +45,15 @@ export function makeFileRef(file: File): FileRef {
 
 export interface CloseInput {
   resolution: Resolution;
-  reason: string;
+  /** Optional when approving (ASQ-5954) — stored as "-" when empty. Required when rejecting. */
+  reason?: string;
+}
+
+export interface LicenseFields {
+  category: string;
+  authority: string;
+  issueDate: string;
+  expiryDate: string;
 }
 
 interface CaseState {
@@ -88,6 +103,30 @@ interface CaseState {
 
   // Documents
   uploadDocument: (caseId: string, type: string, file: File) => void;
+
+  /** Returns false (and explains why) when the case is not In Progress. */
+  ensureWorking: (caseId: string) => boolean;
+
+  // UC002 ZATCA certificate expiry
+  retryZatcaExpiry: (caseId: string) => Promise<void>;
+  // UC004 / UC009 activity license expiry
+  simulateBorrowerLicenseUpload: (caseId: string) => void;
+  approveRenewedLicense: (caseId: string, fields: LicenseFields) => void;
+  rejectRenewedLicense: (caseId: string, reason: string) => void;
+  // UC005 authorization
+  approveAuthorization: (caseId: string, granted: string[]) => void;
+  // UC006 delegation
+  toggleDelegator: (caseId: string, delegatorId: string) => void;
+  addDelegator: (caseId: string, data: { nid: string; dobHijri: string; phone?: string }) => void;
+  updateDelegator: (caseId: string, delegatorId: string, data: { nid: string; dobHijri: string; phone?: string }) => void;
+  approveDelegation: (caseId: string) => void;
+  // UC005 / UC006 / UC007 shared rejection
+  rejectRequest: (caseId: string, reason: string) => void;
+  // UC007 IBAN
+  approveIban: (caseId: string) => void;
+  // UC008 request compliance documents (entity-level; caseId only for the activity log)
+  requestComplianceDocuments: (entityId: string, docTypes: string[], caseId?: string) => void;
+  simulateComplianceUpload: (entityId: string, requestId: string) => void;
 }
 
 export const useClm = create<CaseState>()(
@@ -96,6 +135,23 @@ export const useClm = create<CaseState>()(
       const me = () => get().currentUserId;
       const getCase = (id: string) => get().cases.find((c) => c.id === id);
       const entityOf = (c: CaseRecord) => get().entities.find((e) => e.id === c.entityId)!;
+      const updateEntity = (entityId: string, recipe: (draft: Entity) => void) =>
+        set((s) => ({
+          entities: s.entities.map((e) => {
+            if (e.id !== entityId) return e;
+            const draft = structuredClone(e);
+            recipe(draft);
+            return draft;
+          }),
+        }));
+      const setTask = (entityId: string, taskId: string, patch: Partial<BorrowerTask>) =>
+        updateEntity(entityId, (e) => {
+          const t = e.borrowerTasks?.find((x) => x.id === taskId);
+          if (t) Object.assign(t, patch);
+        });
+      const decide = (d: CaseRecord, outcome: Resolution, reason?: string) => {
+        d.decision = { outcome, reason, at: nowIso(), byId: me() };
+      };
 
       /** Clone-and-mutate update of one case. */
       const update = (caseId: string, recipe: (draft: CaseRecord) => void) =>
@@ -130,8 +186,10 @@ export const useClm = create<CaseState>()(
 
         resetCases: (caseIds) => {
           const seed = createSeed();
+          const entityIds = seed.cases.filter((c) => caseIds.includes(c.id)).map((c) => c.entityId);
           set((s) => ({
             cases: s.cases.map((c) => (caseIds.includes(c.id) ? (seed.cases.find((x) => x.id === c.id) ?? c) : c)),
+            entities: s.entities.map((e) => (entityIds.includes(e.id) ? (seed.entities.find((x) => x.id === e.id) ?? e) : e)),
           }));
         },
 
@@ -139,13 +197,14 @@ export const useClm = create<CaseState>()(
           const before = getCase(caseId);
           if (!before || before.status === to) return;
           update(caseId, (d) => {
-            if (d.status === 'need_info') resumeSla(d);
+            // ASQ-5973: the SLA resumes from where it paused (no reset) when an On Hold case is reactivated.
+            if (d.status === 'need_info' || d.status === 'on_hold') resumeSla(d);
             log(d, { action: 'changed the case status', from: STATUS_LABEL[d.status], to: STATUS_LABEL[to] });
             d.status = to;
           });
           toast('Case status updated.');
-          // UC013 Main flow 1–2: moving to In Progress runs the EDD jobs once.
-          if (to === 'in_progress' && !before.jobsTriggered) void get().runEddJobs(caseId);
+          // UC013 Main flow 1–2: moving an EDD case to In Progress runs the EDD jobs once.
+          if (to === 'in_progress' && before.type === 'edd' && !before.jobsTriggered) void get().runEddJobs(caseId);
         },
 
         requestInfo: (caseId, details) => {
@@ -159,6 +218,7 @@ export const useClm = create<CaseState>()(
         },
 
         closeCase: (caseId, { resolution, reason }) => {
+          const text = reason?.trim() || '-';
           update(caseId, (d) => {
             if (d.status === 'need_info') resumeSla(d);
             log(d, {
@@ -170,7 +230,7 @@ export const useClm = create<CaseState>()(
             });
             d.status = 'closed';
             d.resolution = resolution;
-            d.resolutionReason = reason;
+            d.resolutionReason = text;
             d.closedAt = nowIso();
             d.closedById = me();
           });
@@ -476,7 +536,7 @@ export const useClm = create<CaseState>()(
             d.edd.signing.savedAt = nowIso();
             log(d, { action: 'updated the signing authority', detail: `${documents.filter((x) => x.signatoryIds.length).length} of ${documents.length} documents configured` });
           });
-          toast('Authorized signatories updated.');
+          toast(getCase(caseId)?.type === 'coc' ? 'Signing authority updated.' : 'Authorized signatories updated.');
         },
 
         addLicense: (caseId, data) => {
@@ -503,6 +563,187 @@ export const useClm = create<CaseState>()(
             d.edd.licenses = d.edd.licenses.filter((x) => x.id !== licenseId);
             if (l) log(d, { action: 'removed an activity license', detail: `License ${l.number}` });
           }),
+
+        ensureWorking: (caseId) => {
+          const c = getCase(caseId);
+          if (c?.status === 'in_progress') return true;
+          toast(c?.status === 'closed' ? 'Closed cases are read-only.' : WORK_FIRST_MESSAGE, 'error');
+          return false;
+        },
+
+        // ---- UC002 ZATCA certificate expiry -------------------------------------
+
+        retryZatcaExpiry: async (caseId) => {
+          if (!get().ensureWorking(caseId)) return;
+          update(caseId, (d) => void (d.zatcaExpiry!.loading = true));
+          await api.callAmlScreening(); // simulated network delay
+          const c = getCase(caseId)!;
+          const z = c.zatcaExpiry!;
+          const manual = z.attempts.filter((a) => a.by !== 'system').length;
+          const result = z.script[Math.min(manual, z.script.length - 1)] ?? 'none';
+          update(caseId, (d) => {
+            const zd = d.zatcaExpiry!;
+            zd.loading = false;
+            const details = result === 'found' ? 'Renewed certificate retrieved' : result === 'failed' ? 'Service unavailable' : 'No renewed certificate found';
+            zd.attempts.unshift({ id: uid('za'), at: nowIso(), by: me(), result, details });
+            if (result === 'found') {
+              const today = new Date();
+              const next = new Date(today.getTime() + 365 * DAY_MS);
+              zd.renewed = { number: `3${String(Date.now()).slice(-9)}`, issueDate: today.toISOString().slice(0, 10), expiryDate: next.toISOString().slice(0, 10) };
+            }
+            log(d, { action: 'retried the ZATCA certificate retrieval', detail: details, tone: result === 'found' ? 'positive' : result === 'failed' ? 'negative' : 'neutral' });
+          });
+          if (result === 'found') toast('A renewed certificate was retrieved from ZATCA and saved. You can now resolve the case.');
+          else if (result === 'failed') toast('ZATCA service could not be reached. Try again in a few minutes.', 'error');
+          else toast('No renewed certificate was found in ZATCA.', 'error');
+        },
+
+        // ---- UC004 / UC009 activity license expiry ------------------------------
+
+        simulateBorrowerLicenseUpload: (caseId) => {
+          const c = getCase(caseId);
+          if (!c?.licenseExpiry || c.licenseExpiry.renewed) return;
+          const file: FileRef = { id: uid('f'), name: 'Renewed_Activity_License.pdf', sizeKb: 214, uploadedAt: nowIso(), mime: 'application/pdf' };
+          update(caseId, (d) => {
+            d.licenseExpiry!.renewed = { file, uploadedAt: nowIso() };
+            d.documents.unshift({ id: uid('doc'), name: file.name, type: 'Activity License', uploadedById: 'borrower', uploadedAt: nowIso(), file });
+            log(d, { actorId: 'system', action: 'received the renewed Activity License from the borrower', detail: 'Borrower task "Renew Activity License" completed' });
+          });
+          setTask(c.entityId, c.licenseExpiry.taskId, { status: 'completed', note: undefined });
+          toast('The borrower uploaded the renewed Activity License.');
+        },
+
+        approveRenewedLicense: (caseId, fields) => {
+          if (!get().ensureWorking(caseId)) return;
+          update(caseId, (d) => {
+            Object.assign(d.licenseExpiry!.renewed!, fields);
+            decide(d, 'approved');
+            log(d, { action: 'approved the renewed Activity License', detail: `${fields.category} · ${fields.authority} · expires ${fields.expiryDate}`, tone: 'positive' });
+          });
+          toast('License approved and saved as the new Activity License.');
+        },
+
+        rejectRenewedLicense: (caseId, reason) => {
+          if (!get().ensureWorking(caseId)) return;
+          const c = getCase(caseId)!;
+          update(caseId, (d) => {
+            decide(d, 'rejected', reason);
+            log(d, { action: 'rejected the renewed Activity License', detail: reason, tone: 'negative' });
+          });
+          setTask(c.entityId, c.licenseExpiry!.taskId, { status: 'rejected', note: reason });
+          toast('License rejected. The reason was sent to the borrower.');
+        },
+
+        // ---- UC005 authorization ------------------------------------------------
+
+        approveAuthorization: (caseId, granted) => {
+          if (!get().ensureWorking(caseId)) return;
+          update(caseId, (d) => {
+            d.authorization!.granted = granted;
+            decide(d, 'approved');
+            log(d, { action: 'approved the authorization request', detail: `${granted.length} permissions granted: ${granted.map(permissionLabel).join(', ')}`, tone: 'positive' });
+          });
+          toast('Authorization approved. The status changed to Accepted.');
+        },
+
+        // ---- UC006 delegation ---------------------------------------------------
+
+        toggleDelegator: (caseId, delegatorId) =>
+          update(caseId, (d) => {
+            const x = d.delegation!.delegators.find((y) => y.id === delegatorId);
+            if (x) x.selected = !x.selected;
+          }),
+
+        addDelegator: (caseId, data) => {
+          const delegator: Delegator = { id: uid('dl'), nid: data.nid, dobHijri: data.dobHijri, phone: data.phone, name: yakeenNameFor(data.nid), verified: true, selected: true, addedBy: 'admin' };
+          update(caseId, (d) => {
+            d.delegation!.delegators.push(delegator);
+            log(d, { action: 'added a delegator', detail: `${delegator.name} · verified with Yakeen` });
+          });
+          toast('Delegator added to this case.');
+        },
+
+        updateDelegator: (caseId, delegatorId, data) => {
+          update(caseId, (d) => {
+            const x = d.delegation!.delegators.find((y) => y.id === delegatorId);
+            if (!x) return;
+            Object.assign(x, data, { name: x.name ?? yakeenNameFor(data.nid), verified: true });
+            log(d, { action: 'updated a delegator', detail: `${x.name} · verified with Yakeen` });
+          });
+          toast('Delegator updated.');
+        },
+
+        approveDelegation: (caseId) => {
+          if (!get().ensureWorking(caseId)) return;
+          update(caseId, (d) => {
+            const chosen = d.delegation!.delegators.filter((x) => x.selected);
+            chosen.forEach((x) => Object.assign(x, { sentAt: nowIso(), response: 'pending' }));
+            decide(d, 'approved');
+            log(d, { action: 'approved the delegation request', detail: `Sent to ${chosen.map((x) => x.name).join(', ')} for signature`, tone: 'positive' });
+          });
+          toast('Delegation approved. The request was sent to the selected delegators.');
+          // Simulated delegator response (the admin does not have to wait for it to close the case).
+          setTimeout(() => {
+            update(caseId, (d) => {
+              d.delegation?.delegators.filter((x) => x.response === 'pending').forEach((x) => Object.assign(x, { response: 'approved', respondedAt: nowIso() }));
+              log(d, { actorId: 'system', action: 'received the delegator response', detail: 'Approved' });
+            });
+          }, 6000);
+        },
+
+        rejectRequest: (caseId, reason) => {
+          if (!get().ensureWorking(caseId)) return;
+          const c = getCase(caseId)!;
+          const what = { authorization: 'authorization request', delegation: 'delegation request', iban: 'IBAN' }[c.type as 'authorization'] ?? 'request';
+          update(caseId, (d) => {
+            decide(d, 'rejected', reason);
+            log(d, { action: `rejected the ${what}`, detail: reason, tone: 'negative' });
+          });
+          toast(`The ${what} was rejected. Close the case to finish.`);
+        },
+
+        approveIban: (caseId) => {
+          if (!get().ensureWorking(caseId)) return;
+          update(caseId, (d) => {
+            decide(d, 'approved');
+            log(d, { action: 'approved the IBAN', tone: 'positive' });
+          });
+          toast('IBAN approved and saved for the company.');
+        },
+
+        // ---- UC008 request compliance documents ---------------------------------
+
+        requestComplianceDocuments: (entityId, docTypes, caseId) => {
+          const e = get().entities.find((x) => x.id === entityId);
+          if (!e) return;
+          const pending = new Set((e.complianceRequests ?? []).filter((r) => r.status === 'pending').map((r) => r.docType));
+          const fresh = docTypes.filter((t) => !pending.has(t)); // UC008: never duplicate a pending request
+          if (!fresh.length) return;
+          const taskId = uid('task');
+          const at = nowIso();
+          updateEntity(entityId, (d) => {
+            const reqs: ComplianceRequest[] = fresh.map((docType) => ({ id: uid('cr'), docType, status: 'pending', requestedAt: at, requestedById: me(), taskId }));
+            d.complianceRequests = [...(d.complianceRequests ?? []).filter((r) => !fresh.includes(r.docType)), ...reqs];
+            d.borrowerTasks = [...(d.borrowerTasks ?? []), { id: taskId, kind: 'compliance_documents', title: 'Compliance Documents Task', priority: 'High', createdAt: at, dueAt: new Date(Date.now() + 30 * DAY_MS).toISOString(), status: 'pending', caseId }];
+          });
+          if (caseId) update(caseId, (d) => log(d, { action: 'requested compliance documents', detail: fresh.join(', ') }));
+          toast(`Request sent — ${fresh.length} document${fresh.length === 1 ? '' : 's'} requested. The borrower has been sent an upload task.`);
+        },
+
+        simulateComplianceUpload: (entityId, requestId) => {
+          const e = get().entities.find((x) => x.id === entityId);
+          const req = e?.complianceRequests?.find((r) => r.id === requestId);
+          if (!e || !req || req.status !== 'pending') return;
+          const name = `${req.docType.replace(/[^A-Za-z0-9]+/g, '_')}.pdf`;
+          updateEntity(entityId, (d) => {
+            const r = d.complianceRequests!.find((x) => x.id === requestId)!;
+            Object.assign(r, { status: 'uploaded', uploadedAt: nowIso(), file: { id: uid('f'), name, sizeKb: 180, uploadedAt: nowIso(), mime: 'application/pdf' } });
+            const open = d.complianceRequests!.some((x) => x.taskId === r.taskId && x.status === 'pending');
+            const t = d.borrowerTasks?.find((x) => x.id === r.taskId);
+            if (t && !open) t.status = 'completed';
+          });
+          toast(`The borrower uploaded ${req.docType}.`);
+        },
 
         uploadDocument: (caseId, type, file) => {
           const ref = makeFileRef(file);

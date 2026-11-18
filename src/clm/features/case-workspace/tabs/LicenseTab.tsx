@@ -1,36 +1,21 @@
 import { useState } from 'react';
 import clsx from 'clsx';
-import { CalendarDays, ChevronDown, ChevronUp, FileText, Plus, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, FileText, Plus, Trash2 } from 'lucide-react';
 import type { FileRef, License } from '@/domain/types';
-import { ISSUING_AUTHORITIES, LICENSE_CATEGORIES } from '@/mock/masterData';
 import { useClm, makeFileRef } from '@/store/caseStore';
 import { fileExt, fmtDateTime, fmtSize } from '@/clm/format';
 import { Button } from '@/clm/components/ui/Button';
 import { Dialog } from '@/clm/components/ui/Dialog';
-import { Select } from '@/clm/components/ui/Select';
 import { EmptyState, FileInput, FormField } from '@/clm/components/ui/misc';
 import { HelpTip } from '@/training/help/HelpTip';
 import { useWs } from '../context';
 import { FileActions } from '../dialogs/documents';
+import { LicenseFields, validateLicenseDraft } from '../sections/LicenseFields';
 
 type Draft = Pick<License, 'category' | 'authority' | 'issueDate' | 'expiryDate' | 'file'>;
 
-function DateField({ value, onChange, disabled, id }: { value?: string; onChange: (v: string | undefined) => void; disabled: boolean; id: string }) {
-  return (
-    <label htmlFor={id} className={clsx('flex h-9 items-center gap-2 rounded-md border border-line px-3 text-sm', disabled && 'bg-surface-sunken')}>
-      <CalendarDays className="h-4 w-4 text-ink-muted" />
-      <input id={id} type="date" disabled={disabled} value={value ?? ''} onChange={(e) => onChange(e.target.value || undefined)} className={clsx('w-full bg-transparent outline-none', !value && 'text-ink-faint')} />
-    </label>
-  );
-}
-
 function validate(d: Draft, needsFile: boolean) {
-  return {
-    category: !d.category ? 'Select a license category.' : undefined,
-    authority: !d.authority ? 'Select an issuing authority.' : undefined,
-    file: needsFile && !d.file ? 'A license document is required.' : undefined,
-    dates: d.issueDate && d.expiryDate && d.expiryDate < d.issueDate ? 'Expiry date must be after the issue date.' : undefined,
-  };
+  return { ...validateLicenseDraft(d), file: needsFile && !d.file ? 'A license document is required.' : undefined };
 }
 
 /** One license card. Edits are kept as a draft until Save; Cancel restores the saved values. */
@@ -93,24 +78,7 @@ function LicenseCard({ l, isNew, onDiscardNew, onSaveNew, title }: { l?: License
               <FileActions file={l.file} />
             </div>
           )}
-          <div className="grid grid-cols-2 gap-4">
-            <FormField label="License category" required error={show('category') || undefined}>
-              <div data-tour="license-category">
-                <Select value={draft.category} disabled={readOnly} invalid={!!show('category')} onChange={(v) => set({ category: v })} options={LICENSE_CATEGORIES.map((x) => ({ value: x, label: x }))} placeholder="Select category" />
-              </div>
-            </FormField>
-            <FormField label="Issuing authority" required error={show('authority') || undefined}>
-              <div data-tour="license-authority">
-                <Select value={draft.authority} disabled={readOnly} invalid={!!show('authority')} searchable onChange={(v) => set({ authority: v })} options={ISSUING_AUTHORITIES.map((x) => ({ value: x, label: x }))} placeholder="Select authority" />
-              </div>
-            </FormField>
-            <FormField label="Issue date" error={errs.dates}>
-              <DateField id={`issue-${l?.id ?? 'new'}`} value={draft.issueDate} disabled={readOnly} onChange={(v) => set({ issueDate: v })} />
-            </FormField>
-            <FormField label="Expiry date">
-              <DateField id={`expiry-${l?.id ?? 'new'}`} value={draft.expiryDate} disabled={readOnly} onChange={(v) => set({ expiryDate: v })} />
-            </FormField>
-          </div>
+          <LicenseFields draft={draft} onChange={set} disabled={readOnly} show={show} idPrefix={l?.id ?? 'new'} />
           {origin === 'admin' && (
             <div className="max-w-md">
               {draft.file && (

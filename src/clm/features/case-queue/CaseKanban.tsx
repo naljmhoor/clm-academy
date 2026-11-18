@@ -37,12 +37,14 @@ function Card({ row, dragging, onDragStart, onDragEnd }: { row: QueueRow; draggi
       <div className="bidi truncate text-sm font-semibold" title={entity.nameAr}>
         {entity.nameAr}
       </div>
-      <div className="mt-1.5 flex items-center gap-1.5 text-xs text-ink-muted">
-        <Building2 className="h-3.5 w-3.5" />
-        {c.id} ·
-        <CaseTypeBadge />
-        <PriorityIcon p={c.priority} className="h-4 w-4" />
+      <div className="mt-1.5 flex items-center gap-1.5 whitespace-nowrap text-xs text-ink-muted">
+        <Building2 className="h-3.5 w-3.5 shrink-0" />
+        {c.id}
+        <PriorityIcon p={c.priority} className="h-4 w-4 shrink-0" />
         <span className="ml-auto">{fmtDate(c.createdAt).slice(0, 6)}</span>
+      </div>
+      <div className="mt-1.5">
+        <CaseTypeBadge type={c.type} />
       </div>
       {c.status === 'closed' && (
         <div className="mt-1.5">
@@ -69,6 +71,10 @@ export function CaseKanban({ rows }: { rows: QueueRow[] }) {
   const drop = (to: CaseStatus) => {
     setOver(null);
     if (!dragged || dragged.status === to) return;
+    if (to === 'on_hold') {
+      toast('On Hold is set only by the system migration. Cases cannot be moved into it.', 'error');
+      return;
+    }
     if (!canTransition(dragged.status, to)) {
       toast(`A case can't move from ${STATUS_LABEL[dragged.status]} to ${STATUS_LABEL[to]}.`, 'error');
       return;
@@ -77,7 +83,7 @@ export function CaseKanban({ rows }: { rows: QueueRow[] }) {
   };
 
   return (
-    <div className="grid min-h-[560px] grid-cols-4 gap-4" data-tour="queue-kanban">
+    <div className="grid min-h-[560px] grid-cols-5 gap-3" data-tour="queue-kanban">
       {STATUS_ORDER.map((st) => {
         const col = rows.filter((r) => r.c.status === st);
         const allowed = dragged ? dragged.status !== st && canTransition(dragged.status, st) : false;

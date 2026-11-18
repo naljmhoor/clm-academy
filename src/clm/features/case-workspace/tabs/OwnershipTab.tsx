@@ -2,7 +2,8 @@ import { useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import { AlertTriangle, ArrowRight, Bot, Building2, ChevronDown, ChevronUp, Loader2, RefreshCw, SquareUser, Upload } from 'lucide-react';
 import type { SigningDocument } from '@/domain/types';
-import { signingMissingDocuments, signingSummary } from '@/domain/eddRules';
+import { impactedSigningDocuments, signingMissingDocuments, signingSummary } from '@/domain/eddRules';
+import { OwnershipChangesSection } from '../lifecycle/CocSections';
 import { useClm } from '@/store/caseStore';
 import { fmtDateTime } from '@/clm/format';
 import { SectionCard } from '@/clm/components/ui/Card';
@@ -16,6 +17,16 @@ import { RefreshButton, WATHQ_COOLDOWN_MS } from '../sections/common';
 import { HelpTip } from '@/training/help/HelpTip';
 
 export function OwnershipTab() {
+  const { c } = useWs();
+  if (c.type === 'coc') {
+    return (
+      <div className="space-y-3">
+        <OwnershipChangesSection />
+        <HierarchySection />
+        <SigningSection />
+      </div>
+    );
+  }
   return (
     <div className="space-y-3">
       <OwnersSection />
@@ -250,33 +261,75 @@ function BotResultDialog({ open, onClose }: { open: boolean; onClose: () => void
 
 // ---- Signing authority (UC012) -------------------------------------------
 
-function SignatoryField({ label, doc, options, onChange, disabled, invalid }: { label: string; doc: SigningDocument; options: Option[]; onChange: (ids: string[]) => void; disabled: boolean; invalid: boolean }) {
+function SignatoryField({ label, doc, options, onChange, disabled, invalid, mode = 'all', inactiveIds = [] }: { label: string; doc: SigningDocument; options: Option[]; onChange: (ids: string[]) => void; disabled: boolean; invalid: boolean; mode?: 'all' | 'or'; inactiveIds?: string[] }) {
   const n = doc.signatoryIds.length;
+  const inactive = doc.signatoryIds.filter((id) => inactiveIds.includes(id)).length;
   return (
     <div>
       <FormField label={label} required={doc.required}>
         <MultiSelect value={doc.signatoryIds} onChange={onChange} options={options} disabled={disabled} invalid={invalid} placeholder="Select signatories…" />
       </FormField>
+      {inactive > 0 && (
+        <div className="mt-2 flex items-center gap-2 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700" data-tour="signing-inactive">
+          <AlertTriangle className="h-3.5 w-3.5" />
+          {inactive} selected signator{inactive === 1 ? 'y has' : 'ies have'} left the company. Remove {inactive === 1 ? 'them' : 'them'} and choose an active signatory.
+        </div>
+      )}
       {n > 0 && (
         <div className="mt-2 flex items-center gap-3 rounded-md bg-surface-sunken px-3 py-2 text-xs text-ink-soft">
           <span className="rounded bg-neutral-200/70 px-2 py-0.5 font-semibold text-ink-soft">
             {n} signator{n === 1 ? 'y' : 'ies'}
           </span>
-          {n === 1 ? 'This signatory signs the document alone.' : `All ${n} selected signatories must sign this document.`}
+          {mode === 'or'
+            ? n === 1
+              ? 'This signatory can sign alone.'
+              : `Separately (OR): any one of the ${n} selected signatories can sign.`
+            : n === 1
+              ? 'This signatory signs the document alone.'
+              : `All ${n} selected signatories must sign this document.`}
         </div>
       )}
     </div>
   );
 }
 
-function Accordion({ title, required, summary, children, id }: { title: string; required?: boolean; summary?: string; children: React.ReactNode; id?: string }) {
-  const [open, setOpen] = useState(false);
+/** ASQ-5972: one signing limit for the Facility Contract permission. Empty means No Limit. */
+function FacilityLimitField({ value, onChange, disabled }: { value?: number; onChange: (v: number | undefined) => void; disabled: boolean }) {
+  const [text, setText] = useState(value !== undefined ? String(value) : '');
+  const invalid = text.trim() !== '' && !(Number(text.replace(/,/g, '')) > 0);
   return (
-    <div id={id} className="rounded-lg border border-line">
+    <div data-tour="facility-limit">
+      <FormField label="Facility signing limit (SAR)" error={invalid ? 'Enter a positive amount, or leave it empty for No Limit.' : undefined} htmlFor="facility-limit">
+        <input
+          id="facility-limit"
+          inputMode="decimal"
+          disabled={disabled}
+          value={text}
+          placeholder="No Limit"
+          onChange={(e) => {
+            setText(e.target.value);
+            const n = Number(e.target.value.replace(/,/g, ''));
+            onChange(e.target.value.trim() === '' ? undefined : n > 0 ? n : NaN);
+          }}
+          className={clsx('h-9 w-full max-w-xs rounded-md border px-3 text-sm outline-none', invalid ? 'border-red-500' : 'border-line', disabled && 'bg-surface-sunken')}
+        />
+      </FormField>
+      <p className="mt-1 text-xs text-ink-muted">One limit applies to this permission for every selected signatory. Leave it empty for No Limit. Facilities above the limit stay blocked for these signatories.</p>
+    </div>
+  );
+}
+
+function Accordion({ title, required, summary, children, id, badge, defaultOpen = false }: { title: string; required?: boolean; summary?: string; children: React.ReactNode; id?: string; badge?: React.ReactNode; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div id={id} data-tour={id} className="rounded-lg border border-line">
       <button type="button" onClick={() => setOpen(!open)} className="flex w-full items-center gap-2 px-3 py-3 text-left" aria-expanded={open}>
-        <span className="flex-1 text-sm font-medium">
-          {title}
-          {required && <span className="text-red-600"> *</span>}
+        <span className="flex flex-1 items-center gap-2 text-sm font-medium">
+          <span>
+            {title}
+            {required && <span className="text-red-600"> *</span>}
+          </span>
+          {badge}
         </span>
         {summary && <span className="text-2xs text-ink-muted">{summary}</span>}
         {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -293,21 +346,27 @@ function SigningSection() {
 }
 
 function SigningEditor() {
-  const { c, readOnly } = useWs();
-  const saveSigning = useClm((s) => s.saveSigning);
+  const { c, entity, readOnly } = useWs();
+  const { saveSigning, ensureWorking } = useClm();
   const s = c.edd.signing;
   const [manager, setManager] = useState(s.defaultManagerId);
   const [docs, setDocs] = useState<SigningDocument[]>(s.documents);
   const [bot, setBot] = useState(false);
   const [touched, setTouched] = useState(false);
+  const [confirm, setConfirm] = useState(false);
   const dirty = manager !== s.defaultManagerId || JSON.stringify(docs) !== JSON.stringify(s.documents);
+  const isCoc = c.type === 'coc';
+  const inactiveIds = c.coc?.leftIds ?? [];
+  const impacted = impactedSigningDocuments({ ...c, edd: { ...c.edd, signing: { ...s, documents: docs } } });
 
   const persons = c.edd.stakeholders.filter((p) => p.kind === 'person');
   const options: Option[] = useMemo(
     () =>
       persons.map((p) => ({
         value: p.id,
-        label: personName(p),
+        label: p.active === false ? `${personName(p)} (not active)` : personName(p),
+        disabled: p.active === false,
+        note: p.active === false ? 'Left the company' : undefined,
         hint: p.nameEn,
         render: (
           <span className="flex items-center justify-between gap-2">
@@ -328,8 +387,19 @@ function SigningEditor() {
   const canBot = c.edd.aoa.status === 'extracted' && !!c.edd.aoa.suggestions?.length;
   const setDoc = (id: string, ids: string[]) => setDocs((ds) => ds.map((d) => (d.id === id ? { ...d, signatoryIds: ids } : d)));
   const draftMissing = docs.filter((d) => d.required && !d.signatoryIds.length);
+  const badLimit = docs.some((d) => d.limit !== undefined && !(d.limit > 0));
+  const setLimit = (id: string, limit: number | undefined) => setDocs((ds) => ds.map((d) => (d.id === id ? { ...d, limit } : d)));
+  const savedImpacted = impactedSigningDocuments(c).length;
+  const scfDisabled = entity.products?.includes('scf') && !entity.scfMatrixEnabled;
 
-  const subtitle = !incomplete
+  const doSave = () => {
+    saveSigning(c.id, manager, docs);
+    setConfirm(false);
+  };
+
+  const subtitle = isCoc && savedImpacted > 0
+    ? `${inactiveIds.length} signator${inactiveIds.length === 1 ? 'y' : 'ies'} left the company · ${savedImpacted} of ${s.documents.length} documents need updating`
+    : !incomplete
     ? 'Choose who may sign each legal document. The number of signatories you select decides how it is signed.'
     : !s.method
       ? 'Signing authority has not been configured yet.'
@@ -346,7 +416,7 @@ function SigningEditor() {
       }
       titleAside={s.method && <Badge tone="blue">{s.method === 'bot' ? 'From AOA result' : 'Manually completed'}</Badge>}
       subtitle={subtitle}
-      subtitleTone={incomplete ? 'error' : 'muted'}
+      subtitleTone={incomplete || (isCoc && savedImpacted > 0) ? 'error' : 'muted'}
       actions={
         <Button size="sm" onClick={() => setBot(true)} disabled={!canBot} title={canBot ? undefined : 'No AOA bot result is available yet'} data-tour="view-bot-result">
           <Bot className="h-3.5 w-3.5" />
@@ -361,26 +431,54 @@ function SigningEditor() {
           </FormField>
         </div>
         <div className="space-y-3" data-tour="signing-docs">
-        {standalone.map((d) => (
-          <Accordion key={d.id} id={`signing-${d.id}`} title={d.label} required={d.required} summary={signingSummary(d.signatoryIds.length)}>
-            <SignatoryField label="Authorized signatories" doc={d} options={options} onChange={(ids) => setDoc(d.id, ids)} disabled={readOnly} invalid={touched && d.required && !d.signatoryIds.length} />
-          </Accordion>
-        ))}
+        {standalone.map((d) => {
+          const isImpacted = impacted.includes(d.id);
+          const inactiveCount = d.signatoryIds.filter((id) => inactiveIds.includes(id)).length;
+          return (
+            <Accordion
+              key={d.id}
+              id={`signing-${d.id}`}
+              title={d.label}
+              required={d.required}
+              defaultOpen={isImpacted}
+              badge={isImpacted ? <Badge tone="red">Impacted</Badge> : undefined}
+              summary={inactiveCount ? `${signingSummary(d.signatoryIds.length)} · ${inactiveCount} not active` : d.id === 'facility_contract' && d.signatoryIds.length ? `${signingSummary(d.signatoryIds.length)} · Limit: ${d.limit ? `${d.limit.toLocaleString('en-US')} SAR` : 'No Limit'}` : signingSummary(d.signatoryIds.length)}
+            >
+              <SignatoryField label="Authorized signatories" doc={d} options={options} onChange={(ids) => setDoc(d.id, ids)} disabled={readOnly} invalid={touched && d.required && !d.signatoryIds.length} inactiveIds={inactiveIds} />
+              {d.id === 'facility_contract' && <FacilityLimitField value={d.limit} onChange={(v) => setLimit(d.id, v)} disabled={readOnly} />}
+            </Accordion>
+          );
+        })}
         {s.groups.map((g) => {
           const members = docs.filter((d) => d.groupId === g.id);
           const configured = members.filter((m) => m.signatoryIds.length).length;
+          const required = members.some((m) => m.required);
           return (
-            <Accordion key={g.id} title={g.label} summary={configured ? `${configured} of ${members.length} configured` : 'Not configured'}>
+            <Accordion
+              key={g.id}
+              id={`signing-group-${g.id}`}
+              title={g.label}
+              required={required}
+              badge={g.mode === 'or' ? <Badge tone="blue">Separately (OR)</Badge> : undefined}
+              summary={configured ? `${configured} of ${members.length} configured` : 'Not configured'}
+            >
+              {g.mode === 'or' && <p className="text-xs text-ink-muted">Enabled for this SCF company. Every role below needs at least one signatory, and any one selected signatory can sign on their own.</p>}
               {members.map((d) => (
-                <SignatoryField key={d.id} label={`Authorized signatories (${d.label})`} doc={d} options={options} onChange={(ids) => setDoc(d.id, ids)} disabled={readOnly} invalid={false} />
+                <SignatoryField key={d.id} label={`Authorized signatories (${d.label})`} doc={d} options={options} onChange={(ids) => setDoc(d.id, ids)} disabled={readOnly} invalid={touched && d.required && !d.signatoryIds.length} mode={g.mode} inactiveIds={inactiveIds} />
               ))}
             </Accordion>
           );
         })}
+        {scfDisabled && (
+          <div className="rounded-lg border border-dashed border-line px-3 py-2.5 text-xs text-ink-muted" data-tour="scf-disabled">
+            SCF authorization matrix is disabled for this SCF company, so no SCF signatories are required. It appears here only when the matrix is enabled.
+          </div>
+        )}
         </div>
         {!readOnly && (
           <div className="flex items-center justify-end gap-2 pt-1">
             {touched && (draftMissing.length > 0 || !manager) && <span className="mr-auto text-xs text-red-600">Every required document needs at least one signatory.</span>}
+            {badLimit && <span className="mr-auto text-xs text-red-600">Fix the facility signing limit before saving.</span>}
             <Button
               disabled={!dirty}
               onClick={() => {
@@ -393,9 +491,14 @@ function SigningEditor() {
             </Button>
             <Button
               variant="primary"
-              disabled={!dirty}
+              disabled={!dirty || badLimit}
+              data-tour="signing-save"
               onClick={() => {
                 setTouched(true);
+                if (isCoc) {
+                  if (!ensureWorking(c.id)) return;
+                  return setConfirm(true);
+                }
                 saveSigning(c.id, manager, docs);
               }}
             >
@@ -405,6 +508,33 @@ function SigningEditor() {
         )}
       </div>
       <BotResultDialog open={bot} onClose={() => setBot(false)} />
+      <Dialog
+        open={confirm}
+        onClose={() => setConfirm(false)}
+        tour="confirm-changes-dialog"
+        title="Confirm Changes"
+        description="The signing authority will be updated for this company. Documents signed from now on use the new signatories."
+        footer={
+          <>
+            <Button onClick={() => setConfirm(false)}>Cancel</Button>
+            <Button variant="primary" onClick={doSave}>
+              Confirm
+            </Button>
+          </>
+        }
+      >
+        <ul className="space-y-1.5 text-sm">
+          {docs
+            .filter((d) => JSON.stringify(d) !== JSON.stringify(s.documents.find((x) => x.id === d.id)))
+            .map((d) => (
+              <li key={d.id} className="flex items-center justify-between gap-3 rounded-md bg-surface-sunken px-3 py-2">
+                <span className="font-medium">{d.label}</span>
+                <span className="text-xs text-ink-muted">{signingSummary(d.signatoryIds.length)}</span>
+              </li>
+            ))}
+          {impacted.length > 0 && <li className="text-xs text-red-600">{impacted.length} document(s) still list a signatory who has left the company.</li>}
+        </ul>
+      </Dialog>
     </SectionCard>
   );
 }

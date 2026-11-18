@@ -63,6 +63,11 @@ function useCtx(): () => TourCtx {
     () => ({
       path: `${loc.pathname}${loc.search}`,
       caseOf: (id: string) => useClm.getState().cases.find((c) => c.id === id),
+      entityOf: (caseId: string) => {
+        const s = useClm.getState();
+        const c = s.cases.find((x) => x.id === caseId);
+        return s.entities.find((e) => e.id === c?.entityId);
+      },
       dom: (a: string) => !!findTarget(a),
       me: useClm.getState().currentUserId,
     }),
@@ -183,13 +188,15 @@ function TourRunner({ tourId, stepIndex }: { tourId: string; stepIndex: number }
     };
   }, [step, ctx]);
 
-  // Auto-advance shortly after an action step is completed.
+  // Auto-advance shortly after an action step is completed. stepIndex is a dependency too: when the
+  // trainee finishes the next action before the previous advance fires, `done` stays true across the
+  // step change and would otherwise never schedule the timer.
   useEffect(() => {
     if (!done || !isAction) return;
     const t = setTimeout(() => (isLast ? finish() : setTourStep(stepIndex + 1)), 1100);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [done]);
+  }, [done, stepIndex]);
 
   const finish = () => {
     completeTour();

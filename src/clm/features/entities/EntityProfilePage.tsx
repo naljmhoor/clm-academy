@@ -12,6 +12,10 @@ import { CaseTypeBadge, ResolutionBadge, SlaChip, STATUS_TONE } from '../case-sh
 import { CLIENT_TYPE_LABEL } from '../case-shared/ClientLink';
 import { STATUS_LABEL } from '@/domain/transitions';
 import { FileActions } from '../case-workspace/dialogs/documents';
+import { Button } from '@/clm/components/ui/Button';
+import { BorrowerPreview } from '../borrower/BorrowerPreview';
+import { ComplianceRows, RequestDocumentsDialog } from '../compliance/ComplianceDocuments';
+import { MonitorSmartphone, Send } from 'lucide-react';
 
 type Tab = 'summary' | 'stakeholders' | 'cases' | 'documents';
 
@@ -26,6 +30,8 @@ export function EntityProfilePage() {
   const cases = useMemo(() => allCases.filter((c) => c.entityId === entityId), [allCases, entityId]);
   const users = useUsers();
   const [tab, setTab] = useState<Tab>('summary');
+  const [requestDocs, setRequestDocs] = useState(false);
+  const [borrower, setBorrower] = useState(false);
   useBreadcrumbs([{ label: 'Entities', to: '/entities' }, { label: entity?.nameAr ?? entityId ?? '' }]);
 
   if (!entity) return <EmptyState icon={<CircleAlert className="h-5 w-5" />} title="Entity not found" body={<Link to="/entities" className="link">Back to Entities</Link>} />;
@@ -126,7 +132,7 @@ export function EntityProfilePage() {
                       </Link>
                     </td>
                     <td className="px-3">
-                      <CaseTypeBadge />
+                      <CaseTypeBadge type={c.type} />
                     </td>
                     <td className="px-3">{c.status === 'closed' ? <ResolutionBadge c={c} /> : <Badge tone={STATUS_TONE[c.status] === 'neutral' ? 'gray' : STATUS_TONE[c.status]}>{STATUS_LABEL[c.status]}</Badge>}</td>
                     <td className="px-3">
@@ -141,6 +147,22 @@ export function EntityProfilePage() {
           </div>
         )}
         {tab === 'documents' && (
+          <div className="mb-3 flex justify-end gap-2">
+            {(entity.borrowerTasks?.length ?? 0) > 0 && (
+              <Button size="sm" variant="ghost" onClick={() => setBorrower(true)}>
+                <MonitorSmartphone className="h-3.5 w-3.5" />
+                Borrower side
+              </Button>
+            )}
+            <Button size="sm" onClick={() => setRequestDocs(true)} data-tour="entity-request-docs">
+              <Send className="h-3.5 w-3.5" />
+              Request documents
+            </Button>
+          </div>
+        )}
+        {requestDocs && <RequestDocumentsDialog entity={entity} onClose={() => setRequestDocs(false)} />}
+        {borrower && <BorrowerPreview entityId={entity.id} onClose={() => setBorrower(false)} />}
+        {tab === 'documents' && (
           <div className="overflow-hidden rounded-xl border border-line">
             <table className="w-full border-collapse text-sm">
               <thead className="bg-surface-sunken">
@@ -148,11 +170,14 @@ export function EntityProfilePage() {
                   <th className={TH}>Document Name</th>
                   <th className={TH}>Document Type</th>
                   <th className={TH}>Case</th>
-                  <th className={TH}>Upload Date</th>
+                  <th className={TH}>Upload By</th>
+                  <th className={TH}>Status</th>
+                  <th className={TH}>Last updated</th>
                   <th className={TH}>Actions</th>
                 </tr>
               </thead>
               <tbody>
+                <ComplianceRows requests={entity.complianceRequests ?? []} colSpanAfterType={1} />
                 {docs.map((d) => (
                   <tr key={d.id} className="border-t border-line">
                     <td className="h-12 px-3">{d.name}</td>
@@ -161,6 +186,10 @@ export function EntityProfilePage() {
                       <Link to={`/cases/${d.caseId}?tab=documents`} className="link">
                         {d.caseId}
                       </Link>
+                    </td>
+                    <td className="px-3">{d.uploadedById === 'system' ? 'System' : d.uploadedById === 'borrower' ? 'Borrower' : users.find((u) => u.id === d.uploadedById)?.name}</td>
+                    <td className="px-3">
+                      <Badge tone="green">Uploaded</Badge>
                     </td>
                     <td className="px-3">{fmtDateTime(d.uploadedAt)}</td>
                     <td className="px-3">

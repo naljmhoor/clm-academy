@@ -15,6 +15,10 @@ const ids = new Set(seed.cases.map((c) => c.id));
 const ctxFor = (path = '/'): TourCtx => ({
   path,
   caseOf: (id) => useClm.getState().cases.find((c) => c.id === id),
+  entityOf: (id) => {
+    const st = useClm.getState();
+    return st.entities.find((e) => e.id === st.cases.find((c) => c.id === id)?.entityId);
+  },
   dom: () => false,
   me: 'u-trainee',
 });
@@ -28,8 +32,8 @@ describe('tours', () => {
       for (const s of t.steps) if (s.done) expect(s.done).toBeTypeOf('function');
     }
   });
-  it('cover the six required learning paths', () => {
-    expect(TOURS.map((t) => t.id)).toEqual(['intro', 'first-edd', 'missing-info', 'signing', 'license', 'close-edd']);
+  it('cover the required learning paths (MVP + Phase II)', () => {
+    expect(TOURS.map((t) => t.id)).toEqual(['intro', 'first-edd', 'missing-info', 'signing', 'license', 'close-edd', 'coc', 'zatca-expiry', 'license-expiry', 'authorization', 'delegation', 'iban', 'compliance-docs', 'reactivate-on-hold']);
   });
   it('do not consider action steps done on fresh data', () => {
     useClm.getState().resetAll();
@@ -42,7 +46,7 @@ describe('tours', () => {
 describe('practice scenarios', () => {
   beforeEach(() => useClm.getState().resetAll());
   it('each own a seeded case and start incomplete', () => {
-    expect(SCENARIOS).toHaveLength(8);
+    expect(SCENARIOS).toHaveLength(16);
     for (const s of SCENARIOS) {
       expect(ids.has(s.caseId)).toBe(true);
       expect(s.tasks.every((t) => t.check(ctxFor('/academy')))).toBe(false);
@@ -78,7 +82,12 @@ describe('store flows', () => {
     const st = useClm.getState();
     const get = () => useClm.getState().cases.find((c) => c.id === 'CS-1851')!;
     expect(evaluateRequirements(get()).map((r) => r.key)).toEqual(['licenses']);
-    st.updateLicense('CS-1851', get().edd.licenses[0].id, { category: 'Industrial', authority: 'Riyadh Municipality' }, 'configured');
+    st.updateLicense('CS-1851', get().edd.licenses[0].id, { category: 'Industrial', authority: 'Ministry of Industry and Mineral Resources' }, 'configured');
+    // UC003 (Phase II): issue and expiry dates are mandatory too.
+    expect(evaluateRequirements(get()).map((r) => r.key)).toEqual(['licenses']);
+    st.updateLicense('CS-1851', get().edd.licenses[0].id, { issueDate: '2026-01-01', expiryDate: '2025-12-31' }, 'dates');
+    expect(evaluateRequirements(get()).map((r) => r.key)).toEqual(['licenses']); // expiry before issue
+    st.updateLicense('CS-1851', get().edd.licenses[0].id, { expiryDate: '2027-01-01' }, 'dates');
     expect(evaluateRequirements(get())).toEqual([]);
     st.addLicense('CS-1851', { category: 'Logistics' });
     expect(evaluateRequirements(get()).map((r) => r.key)).toEqual(['licenses']); // added license has no document

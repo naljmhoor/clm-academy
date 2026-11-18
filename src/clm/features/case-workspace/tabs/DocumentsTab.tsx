@@ -1,5 +1,8 @@
 import { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { MonitorSmartphone, Plus, Send } from 'lucide-react';
+import { Badge } from '@/clm/components/ui/Badge';
+import { BorrowerPreview } from '@/clm/features/borrower/BorrowerPreview';
+import { ComplianceRows, RequestDocumentsDialog } from '@/clm/features/compliance/ComplianceDocuments';
 import { DOCUMENT_TYPES } from '@/mock/masterData';
 import { useClm, useUsers } from '@/store/caseStore';
 import { fmtDateTime } from '@/clm/format';
@@ -51,9 +54,15 @@ function UploadDialog({ onClose }: { onClose: () => void }) {
 }
 
 export function DocumentsTab() {
-  const { c, readOnly } = useWs();
+  const { c, entity, readOnly } = useWs();
   const users = useUsers();
   const [upload, setUpload] = useState(false);
+  const [requestDocs, setRequestDocs] = useState(false);
+  const [borrower, setBorrower] = useState(false);
+  // UC008: the action is offered on Due Diligence (and CoC) cases that are not closed.
+  const canRequest = !readOnly && (c.type === 'edd' || c.type === 'coc');
+  const requests = c.type === 'edd' || c.type === 'coc' ? (entity.complianceRequests ?? []) : [];
+  const uploader = (id: string) => (id === 'system' ? 'System' : id === 'borrower' ? 'Borrower' : users.find((u) => u.id === id)?.name);
   const TH = 'h-10 px-3 text-left text-sm font-medium';
   return (
     <section className="rounded-xl border border-line bg-white p-3" id="documents" data-tour="documents">
@@ -62,10 +71,22 @@ export function DocumentsTab() {
           <h3 className="text-sm font-semibold">Documents</h3>
           <p className="text-xs text-ink-muted">All documents uploaded by the client or manually added by the admin are displayed here.</p>
         </div>
+        {requests.length > 0 && (
+          <Button size="sm" variant="ghost" onClick={() => setBorrower(true)} data-tour="docs-borrower-side">
+            <MonitorSmartphone className="h-3.5 w-3.5" />
+            Borrower side
+          </Button>
+        )}
         {!readOnly && (
           <Button size="sm" onClick={() => setUpload(true)}>
             <Plus className="h-3.5 w-3.5" />
             Upload Document
+          </Button>
+        )}
+        {canRequest && (
+          <Button size="sm" onClick={() => setRequestDocs(true)} data-tour="request-docs">
+            <Send className="h-3.5 w-3.5" />
+            Request documents
           </Button>
         )}
       </div>
@@ -76,18 +97,23 @@ export function DocumentsTab() {
               <th className={TH}>Document Name</th>
               <th className={TH}>Document Type</th>
               <th className={TH}>Upload By</th>
-              <th className={TH}>Upload Date</th>
+              <th className={TH}>Status</th>
+              <th className={TH}>Last updated</th>
               <th className={TH}>Actions</th>
             </tr>
           </thead>
           <tbody>
+            <ComplianceRows requests={requests} />
             {c.documents.map((d) => (
               <tr key={d.id} className="border-t border-line">
                 <td className="h-12 max-w-[220px] truncate px-3" title={d.name}>
                   {d.name}
                 </td>
                 <td className="px-3">{d.type}</td>
-                <td className="px-3">{d.uploadedById === 'system' ? 'System' : users.find((u) => u.id === d.uploadedById)?.name}</td>
+                <td className="px-3">{uploader(d.uploadedById)}</td>
+                <td className="px-3">
+                  <Badge tone="green">Uploaded</Badge>
+                </td>
                 <td className="px-3">{fmtDateTime(d.uploadedAt)}</td>
                 <td className="px-3">
                   <FileActions file={d.file} />
@@ -96,9 +122,11 @@ export function DocumentsTab() {
             ))}
           </tbody>
         </table>
-        {c.documents.length === 0 && <EmptyState title="No documents yet" />}
+        {c.documents.length === 0 && requests.length === 0 && <EmptyState title="No documents yet" />}
       </div>
       {upload && <UploadDialog onClose={() => setUpload(false)} />}
+      {requestDocs && <RequestDocumentsDialog entity={entity} caseId={c.id} onClose={() => setRequestDocs(false)} />}
+      {borrower && <BorrowerPreview entityId={entity.id} focusTaskId={requests.find((r) => r.status === 'pending')?.taskId ?? requests[0]?.taskId} onClose={() => setBorrower(false)} />}
     </section>
   );
 }

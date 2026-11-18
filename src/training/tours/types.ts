@@ -1,9 +1,10 @@
-import type { CaseRecord } from '@/domain/types';
+import type { CaseRecord, Entity } from '@/domain/types';
 
 export interface TourCtx {
   /** Current route as "pathname?search". */
   path: string;
   caseOf: (id: string) => CaseRecord | undefined;
+  entityOf: (caseId: string) => Entity | undefined;
   /** True when an element with this data-tour anchor is on screen. */
   dom: (anchor: string) => boolean;
   me: string;

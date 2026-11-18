@@ -33,7 +33,7 @@ export function computeSla(c: Pick<CaseRecord, 'createdAt' | 'dueAt' | 'closedAt
   else if (consumed >= AT_RISK_THRESHOLD) status = 'at_risk';
   else status = 'on_track';
 
-  return { status, paused: c.status === 'need_info', consumed, remainingMs, elapsedMs: elapsed };
+  return { status, paused: c.status === 'need_info' || c.status === 'on_hold', consumed, remainingMs, elapsedMs: elapsed };
 }
 
 /** "2d", "17h", "32m" — matches the CLM chips. */

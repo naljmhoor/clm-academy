@@ -3,7 +3,9 @@
 // can find them on the English CLM interface.
 import type { TourContent } from '../i18n';
 
-export const AR: TourContent = {
+import { AR_PHASE2 } from './phase2.ar';
+
+const BASE: TourContent = {
   intro: {
     title: 'مقدمة إلى CLM',
     summary: 'ما هو CLM، وكيف تصل الكيسات، وكيف تقرأ Case Queue: الحالات والأولويات والـ SLA والإسناد.',
@@ -22,11 +24,11 @@ export const AR: TourContent = {
       },
       intake: {
         title: 'كيف تدخل الكيسات إلى CLM',
-        body: 'النظام هو اللي ينشئ الكيسات وليس الموظف. في هذا الإصدار نوع الكيس هو العناية الواجبة المعززة (EDD): يفتحه CLM تلقائياً عند اكتمال تسجيل الشركة، أو لشركة قائمة لم تصل أبداً إلى Compliance Done.',
+        body: 'النظام أو طلب من المقترض هو اللي ينشئ الكيسات وليس الموظف. كيس العناية الواجبة المعززة (EDD) يُفتح تلقائياً عند اكتمال تسجيل الشركة. كيسات دورة الحياة (Change of Circumstance وانتهاء شهادة ZATCA وانتهاء رخصة النشاط) تُفتح لما يكتشف CLM تغييراً أو انتهاء صلاحية، وكيسات الطلبات (Authorization وDelegation وIBAN Review) تُفتح لما يرسل المقترض طلباً.',
       },
       status: {
         title: 'الحالات (Status)',
-        body: 'Open — بانتظار البدء. In Progress — أحد يعمل عليه. Need Info — بانتظار معلومات (يتوقف احتساب الـ SLA). Closed — تم القرار بـ Approved أو Rejected. اضغط على الحالة لتغييرها، ونفس القواعد تنطبق في كل مكان.',
+        body: 'Open — بانتظار البدء. In Progress — أحد يعمل عليه. Need Info — بانتظار معلومات (يتوقف احتساب الـ SLA). On Hold — يضعها النظام فقط عبر الترحيل، ويتوقف الـ SLA لين تنقل الكيس إلى In Progress. Closed — تم القرار بـ Approved أو Rejected. اضغط على الحالة لتغييرها، ونفس القواعد تنطبق في كل مكان.',
       },
       priority: {
         title: 'الأولوية (Priority)',
@@ -207,8 +209,8 @@ export const AR: TourContent = {
       },
       existing: {
         title: 'اضبط ترخيص المقترض',
-        body: 'المقترض رفع هذا المستند. اعرضه أو نزّله ثم صنّفه. التغييرات تبقى مسودة لين تضغط Save.',
-        action: 'اختر License category وIssuing authority ثم اضغط Save.',
+        body: 'المقترض رفع هذا المستند. اعرضه أو نزّله ثم صنّفه. القائمتان فيهما بحث، وقائمة Issuing authority تعرض فقط الجهات التابعة للفئة اللي اخترتها. Issue date وExpiry date إلزاميين. التغييرات تبقى مسودة لين تضغط Save.',
+        action: 'اختر License category وIssuing authority وIssue date وExpiry date ثم اضغط Save.',
       },
       add: {
         title: 'أضف ترخيصاً',
@@ -217,11 +219,11 @@ export const AR: TourContent = {
       },
       new: {
         title: 'الترخيص الجديد يحتاج مستنداً',
-        body: 'للترخيص اللي تضيفه، رفع المستند إلزامي مع الفئة والجهة المصدرة. Save يضيفه للكيس، وCancel يلغي البطاقة. تقدر تسوي أي واحد منهم الحين.',
+        body: 'للترخيص اللي تضيفه، رفع المستند إلزامي مع الفئة والجهة المصدرة والتاريخين. Save يضيفه للكيس، وCancel يلغي البطاقة. تقدر تسوي أي واحد منهم الحين.',
       },
       effect: {
         title: 'تأثير التراخيص على الإغلاق',
-        body: 'إذا وُجد أي ترخيص، لازم يكون لكل ترخيص فئة وجهة مصدرة (ومستند للتراخيص المضافة) قبل اعتماد الكيس. وإذا ما فيه تراخيص، القسم ما يمنع الإغلاق. والفئة تحدد أيضاً أهلية الممولين (مثل Industrial لصندوق التنمية الصناعية SIDF).',
+        body: 'إذا وُجد أي ترخيص، لازم يكون لكل ترخيص فئة وجهة مصدرة وتاريخ إصدار وتاريخ انتهاء (ومستند للتراخيص المضافة) قبل اعتماد الكيس. وإذا ما فيه تراخيص، القسم ما يمنع الإغلاق. والفئة تحدد أيضاً أهلية الممولين (مثل Industrial لصندوق التنمية الصناعية SIDF).',
       },
     },
   },
@@ -236,7 +238,7 @@ export const AR: TourContent = {
       attempt: {
         title: 'جرّب الاعتماد',
         body: 'خلنا نشوف وش يسوي CLM لو حاولت تعتمد الكيس رغم النقص.',
-        action: 'من قائمة Status اختر Closed، ثم Approved، واكتب السبب واضغط Done.',
+        action: 'من قائمة Status اختر Closed، ثم Approved واضغط Done. سبب الاعتماد اختياري.',
       },
       feedback: {
         title: 'رسالة التحقق',
@@ -250,13 +252,13 @@ export const AR: TourContent = {
       },
       license: {
         title: 'أكمل ترخيص النشاط',
-        body: 'صنّف License 1 بفئة وجهة مصدرة ثم اضغط Save.',
+        body: 'أكمل License 1: الفئة، والجهة المصدرة (حسب الفئة)، وتاريخ الإصدار، وتاريخ الانتهاء، ثم اضغط Save.',
         action: 'أكمل License 1 واضغط Save.',
       },
       close: {
         title: 'أكمل القرار',
         body: 'بطاقة Required Before Closing اختفت — كل المتطلبات الإلزامية مكتملة.',
-        action: 'أغلق الكيس بـ Approved مع كتابة سبب القرار.',
+        action: 'أغلق الكيس بـ Approved. سبب الاعتماد اختياري، وإذا تركته فاضي ينحفظ "-".',
         wrong: 'تم إغلاق الكيس بـ Rejected. هذا مسموح، لكن الجولة كانت تتوقع Approved — أعد الجولة للتدرّب مرة ثانية.',
       },
       resolution: {
@@ -275,3 +277,5 @@ export const AR: TourContent = {
     },
   },
 };
+
+export const AR: TourContent = { ...BASE, ...AR_PHASE2 };

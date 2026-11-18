@@ -8,6 +8,10 @@ import { activeFilterCount, useQueueUi, type FilterKey, type QueueFilters } from
 import { useUsers } from '@/store/caseStore';
 import { STATUS_LABEL, STATUS_ORDER } from '@/domain/transitions';
 import { SLA_STATUS_LABEL } from '@/domain/sla';
+import type { CaseType } from '@/domain/types';
+import { CASE_TYPE_META } from '@/mock/masterData';
+
+const CATEGORY_ORDER = ['Compliance', 'Entity Lifecycle', 'Authority Management', 'Banking'];
 
 const FILTER_LABEL: Record<FilterKey, string> = {
   caseType: 'Case Type',
@@ -39,7 +43,9 @@ export function FiltersPopover() {
     });
 
   const options: Record<Exclude<FilterKey, 'dateRange'>, { value: string; label: string }[]> = {
-    caseType: [{ value: 'edd', label: 'Due Diligence' }],
+    caseType: (Object.keys(CASE_TYPE_META) as CaseType[])
+      .map((k) => ({ value: k, label: CASE_TYPE_META[k].label, group: CASE_TYPE_META[k].category }))
+      .sort((a, b) => CATEGORY_ORDER.indexOf(a.group) - CATEGORY_ORDER.indexOf(b.group)),
     status: STATUS_ORDER.map((s) => ({ value: s, label: STATUS_LABEL[s] })),
     assignee: [{ value: 'unassigned', label: 'Unassigned' }, ...users.map((u) => ({ value: u.id, label: u.name }))],
     priority: [

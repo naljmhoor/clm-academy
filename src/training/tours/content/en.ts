@@ -1,7 +1,9 @@
 // English walkthrough content. Keys match tour and step ids in ../tours.ts.
 import type { TourContent } from "../i18n";
 
-export const EN: TourContent = {
+import { EN_PHASE2 } from "./phase2.en";
+
+const BASE: TourContent = {
   "intro": {
     "title": "Introduction to CLM",
     "summary": "What CLM is, how cases arrive, and how to read the Case Queue: statuses, priorities, SLA and assignment.",
@@ -20,11 +22,11 @@ export const EN: TourContent = {
       },
       "intake": {
         "title": "How cases enter CLM",
-        "body": "Cases are created by the system, not by hand. In this release the case type is Enhanced Due Diligence (EDD): CLM opens one automatically when a company completes registration, or for an existing company that never reached Compliance Done."
+        "body": "Cases are created by the system or by a borrower request, not by hand. Enhanced Due Diligence (EDD) opens automatically when a company completes registration. Lifecycle cases (Change of Circumstance, ZATCA and Activity License expiry) open when CLM detects a change or an expiry, and request cases (Authorization, Delegation, IBAN Review) open when a borrower submits a request."
       },
       "status": {
         "title": "Statuses",
-        "body": "Open — waiting to start. In Progress — someone is working on it. Need Info — waiting for information (the SLA pauses). Closed — decided as Approved or Rejected. Click a status to change it; the same rules apply everywhere."
+        "body": "Open — waiting to start. In Progress — someone is working on it. Need Info — waiting for information (the SLA pauses). On Hold — set only by the system migration; the SLA pauses until you move it to In Progress. Closed — decided as Approved or Rejected. Click a status to change it; the same rules apply everywhere."
       },
       "priority": {
         "title": "Priority",
@@ -205,8 +207,8 @@ export const EN: TourContent = {
       },
       "existing": {
         "title": "Configure the borrower’s license",
-        "body": "The borrower uploaded this document. View or download it, then classify it. Changes are kept as a draft until you Save.",
-        "action": "Select a License category and an Issuing authority, then click Save."
+        "body": "The borrower uploaded this document. View or download it, then classify it. Both lists are searchable, and the Issuing authority list only shows authorities for the category you chose. Issue date and Expiry date are mandatory. Changes are kept as a draft until you Save.",
+        "action": "Select a License category, an Issuing authority, the Issue date and the Expiry date, then click Save."
       },
       "add": {
         "title": "Add a license",
@@ -215,11 +217,11 @@ export const EN: TourContent = {
       },
       "new": {
         "title": "A new license needs a document",
-        "body": "For a license you add, the document upload is mandatory, together with category and issuing authority. Save adds it to the case; Cancel discards the card. You can do either now."
+        "body": "For a license you add, the document upload is mandatory, together with category, issuing authority and both dates. Save adds it to the case; Cancel discards the card. You can do either now."
       },
       "effect": {
         "title": "How licenses affect closing",
-        "body": "If any license exists, every license must have its category and issuing authority (and a document for added ones) before the case can be approved. With no licenses, the section does not block closing. The category also drives funder eligibility (e.g. Industrial for SIDF)."
+        "body": "If any license exists, every license must have its category, issuing authority, issue date and expiry date (and a document for added ones) before the case can be approved. With no licenses, the section does not block closing. The category also drives funder eligibility (e.g. Industrial for SIDF)."
       }
     }
   },
@@ -234,7 +236,7 @@ export const EN: TourContent = {
       "attempt": {
         "title": "Attempt approval",
         "body": "Let’s see what CLM does if you try to approve anyway.",
-        "action": "Choose Closed, select Approved, type a reason and click Done."
+        "action": "Choose Closed, select Approved and click Done. The approval reason is optional."
       },
       "feedback": {
         "title": "Validation feedback",
@@ -248,13 +250,13 @@ export const EN: TourContent = {
       },
       "license": {
         "title": "Resolve the activity license",
-        "body": "Classify License 1 with a category and an issuing authority, then Save.",
+        "body": "Complete License 1: category, issuing authority (filtered by category), issue date and expiry date, then Save.",
         "action": "Complete License 1 and click Save."
       },
       "close": {
         "title": "Complete the resolution",
         "body": "Required Before Closing is gone — every mandatory item is complete.",
-        "action": "Close the case as Approved with a resolution reason.",
+        "action": "Close the case as Approved. The approval reason is optional; if you leave it empty, \"-\" is recorded.",
         "wrong": "The case was closed as Rejected. That is allowed, but this tour expected Approved — Restart to practise again."
       },
       "resolution": {
@@ -273,3 +275,5 @@ export const EN: TourContent = {
     }
   }
 };
+
+export const EN: TourContent = { ...BASE, ...EN_PHASE2 };

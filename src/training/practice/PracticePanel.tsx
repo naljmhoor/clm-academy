@@ -38,6 +38,11 @@ function Panel({ scenarioId }: { scenarioId: string }) {
     (): TourCtx => ({
       path: `${loc.pathname}${loc.search}`,
       caseOf: (cid) => useClm.getState().cases.find((c) => c.id === cid),
+      entityOf: (cid: string) => {
+        const st = useClm.getState();
+        const c = st.cases.find((x) => x.id === cid);
+        return st.entities.find((e) => e.id === c?.entityId);
+      },
       dom: (a) => !!document.querySelector(`[data-tour="${a}"]`),
       me: useClm.getState().currentUserId,
     }),

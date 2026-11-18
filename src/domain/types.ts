@@ -1,9 +1,9 @@
 // Domain model for the simulated CLM. Pure types — no React, no store.
 
-export type CaseStatus = 'open' | 'in_progress' | 'need_info' | 'closed';
+export type CaseStatus = 'open' | 'in_progress' | 'need_info' | 'on_hold' | 'closed';
 export type Resolution = 'approved' | 'rejected';
 export type Priority = 'low' | 'medium' | 'high';
-export type CaseType = 'edd';
+export type CaseType = 'edd' | 'coc' | 'zatca_expiry' | 'license_expiry' | 'authorization' | 'delegation' | 'iban';
 export type ClientType = 'borrower' | 'qualified_investor';
 
 export interface User {
@@ -33,6 +33,38 @@ export interface Entity {
   unified: string;
   clientType: ClientType;
   registryStatus: string;
+  /** Products the company is enrolled in (drives optional signing groups). */
+  products?: ('capex' | 'scf')[];
+  /** ASQ-5971: the SCF authorization matrix applies only when this is on (SCF companies only). */
+  scfMatrixEnabled?: boolean;
+  /** UC008: compliance documents requested from the borrower (one row per document type). */
+  complianceRequests?: ComplianceRequest[];
+  /** Simulated borrower-side tasks (UC008, UC009). */
+  borrowerTasks?: BorrowerTask[];
+}
+
+export interface ComplianceRequest {
+  id: string;
+  docType: string;
+  status: 'pending' | 'uploaded';
+  requestedAt: string;
+  requestedById: string;
+  taskId: string;
+  uploadedAt?: string;
+  file?: FileRef;
+}
+
+export interface BorrowerTask {
+  id: string;
+  kind: 'license_renewal' | 'compliance_documents';
+  title: string;
+  priority: 'High' | 'Medium' | 'Low';
+  createdAt: string;
+  dueAt?: string;
+  status: 'pending' | 'completed' | 'rejected';
+  caseId?: string;
+  /** Rejection reason shown to the borrower. */
+  note?: string;
 }
 
 // ---- KYC -------------------------------------------------------------------
@@ -49,6 +81,8 @@ export interface Stakeholder {
   role: 'Owner' | 'Executive' | 'Company Director' | 'Representative';
   ownership?: number;
   kind: 'person' | 'company';
+  /** False when the person has left the company (Change of Circumstance). */
+  active?: boolean;
 }
 
 // ---- KYB -------------------------------------------------------------------
@@ -180,6 +214,8 @@ export interface AoaState {
 export interface SigningDocument {
   id: string;
   label: string;
+  /** ASQ-5972: Facility Contract only — one signing limit (SAR) for the permission; empty = No Limit. */
+  limit?: number;
   /** Sub-role label for grouped documents such as "CapEx Payment Agency". */
   groupId?: string;
   required: boolean;
@@ -188,6 +224,8 @@ export interface SigningDocument {
 export interface SigningGroup {
   id: string;
   label: string;
+  /** 'or' = any one selected signatory may sign separately (SCF authorization matrix). */
+  mode?: 'all' | 'or';
 }
 export interface SigningState {
   defaultManagerId?: string;
@@ -305,6 +343,16 @@ export interface CaseRecord {
   /** Total milliseconds spent in Need Info before the current pause. */
   pausedMs: number;
   pausedSince?: string;
+  /** Why the case exists (Case Trigger rail card on lifecycle and request cases). */
+  trigger?: CaseTrigger;
+  /** Approve / reject decision on request-type cases (license renewal, authorization, delegation, IBAN). */
+  decision?: Decision;
+  coc?: CocData;
+  zatcaExpiry?: ZatcaExpiryData;
+  licenseExpiry?: LicenseExpiryData;
+  authorization?: AuthorizationData;
+  delegation?: DelegationData;
+  iban?: IbanData;
   /** EDD jobs run once, the first time the case moves to In Progress. */
   jobsTriggered: boolean;
   edd: EddData;
@@ -312,4 +360,130 @@ export interface CaseRecord {
   comments: Comment[];
   activity: ActivityEntry[];
   scenario: Scenario;
+}
+
+// ---- Lifecycle & request case types (Phase II) ----------------------------
+
+export interface CaseTrigger {
+  label: string;
+  initiatedBy: 'System' | 'Borrower';
+  at: string;
+}
+
+export interface Decision {
+  outcome: Resolution;
+  reason?: string;
+  at: string;
+  byId: string;
+}
+
+/** UC001 Change of Circumstance */
+export type CocAction = 'review' | 'ownership' | 'configuration';
+export interface CocChange {
+  id: string;
+  field: string;
+  previous: string;
+  next: string;
+  action: CocAction;
+}
+export interface OwnershipChange {
+  id: string;
+  name: string;
+  ref: string;
+  kind: 'Individual' | 'Company';
+  previous: string;
+  next: string;
+  changeType: 'Owner removed' | 'Owner added' | '% changed' | 'Role changed';
+  at: string;
+}
+export interface CocData {
+  scenario: 'review' | 'ownership' | 'signing';
+  changes: CocChange[];
+  ownershipChanges: OwnershipChange[];
+  /** Stakeholders who left the company; documents still listing them must be updated. */
+  leftIds: string[];
+}
+
+/** UC002 ZATCA Certificate Expiry */
+export interface Certificate {
+  number: string;
+  issueDate: string;
+  expiryDate: string;
+}
+export interface ZatcaAttempt {
+  id: string;
+  at: string;
+  by: string; // 'system' or a user id
+  result: 'none' | 'found' | 'failed';
+  details: string;
+}
+export interface ZatcaExpiryData {
+  expired: Certificate;
+  renewed?: Certificate;
+  attempts: ZatcaAttempt[];
+  /** Training knob: results of the next manual retries, in order (the last one repeats). */
+  script: ZatcaAttempt['result'][];
+  loading?: boolean;
+}
+
+/** UC004 Activity License Expiry (UC009 borrower task) */
+export interface RenewedLicense {
+  file: FileRef;
+  uploadedAt: string;
+  category?: string;
+  authority?: string;
+  issueDate?: string;
+  expiryDate?: string;
+}
+export interface LicenseExpiryData {
+  expired: License;
+  taskId: string;
+  renewed?: RenewedLicense;
+}
+
+/** Requester on authorization / delegation cases. All values are fictional. */
+export interface Requester {
+  name: string;
+  phone: string;
+  nid: string;
+  dobHijri: string;
+}
+
+/** UC005 Authorization Request */
+export interface AuthorizationData {
+  requester: Requester;
+  document: FileRef;
+  requested: string[];
+  granted?: string[];
+}
+
+/** UC006 Delegation Request */
+export interface Delegator {
+  id: string;
+  name?: string;
+  nid: string;
+  dobHijri?: string;
+  phone?: string;
+  verified: boolean;
+  selected: boolean;
+  addedBy: 'borrower' | 'admin';
+  sentAt?: string;
+  respondedAt?: string;
+  response?: 'pending' | 'approved';
+}
+export interface DelegationData {
+  requester: Requester;
+  documents: FileRef[];
+  primary: string[];
+  system: string[];
+  delegators: Delegator[];
+}
+
+/** UC007 IBAN Review */
+export interface IbanData {
+  iban: string;
+  accountName: string;
+  bankName: string;
+  document: FileRef;
+  spareResult: string;
 }

@@ -13,7 +13,11 @@ export type RequirementKey =
   | 'aml'
   | 'ownership'
   | 'signing'
-  | 'licenses';
+  | 'licenses'
+  | 'coc'
+  | 'zatca_renewal'
+  | 'borrower_task'
+  | 'decision';
 
 export interface Requirement {
   key: RequirementKey;
@@ -24,6 +28,8 @@ export interface Requirement {
   detail: string;
   tab: WorkspaceTab;
   anchor: string;
+  /** True when the item blocks closing with any resolution (not only Approved). */
+  blocksAll?: boolean;
 }
 
 // ---- KYC (UC004) -----------------------------------------------------------
@@ -84,7 +90,7 @@ export function signingSummary(count: number): string {
 
 export function incompleteLicenses(edd: EddData): number[] {
   return edd.licenses
-    .filter((l) => !l.category || !l.authority || (l.origin === 'admin' && !l.file))
+    .filter((l) => !l.category || !l.authority || !l.issueDate || !l.expiryDate || l.expiryDate < l.issueDate || (l.origin === 'admin' && !l.file))
     .map((l) => l.number);
 }
 
@@ -104,7 +110,7 @@ export const SHORT_ADDRESS_PATTERN = /^[A-Za-z]{4}[0-9]{4}$/;
 
 // ---- Preconditions -----------------------------------------------------------
 
-export function evaluateRequirements(c: CaseRecord): Requirement[] {
+export function evaluateEddRequirements(c: CaseRecord): Requirement[] {
   const edd = c.edd;
   const out: Requirement[] = [];
 
@@ -156,8 +162,64 @@ export function evaluateRequirements(c: CaseRecord): Requirement[] {
   if (licensesRequired(edd)) {
     const bad = incompleteLicenses(edd);
     for (const n of bad) {
-      out.push({ key: 'licenses', label: 'Activity License', heading: 'Activity License is incomplete', detail: `License ${n} is missing its document, license category or issuing authority.`, tab: 'license', anchor: `license-${n}` });
+      out.push({ key: 'licenses', label: 'Activity License', heading: 'Activity License is incomplete', detail: `License ${n} is missing its document, category, issuing authority, issue date or expiry date.`, tab: 'license', anchor: `license-${n}` });
     }
   }
   return out;
+}
+
+// ---- Phase II case types ---------------------------------------------------
+
+/** Signing documents that still list someone who has left the company (Change of Circumstance). */
+export function impactedSigningDocuments(c: CaseRecord): string[] {
+  const left = c.coc?.leftIds ?? [];
+  if (!left.length) return [];
+  return c.edd.signing.documents.filter((d) => d.signatoryIds.some((id) => left.includes(id))).map((d) => d.id);
+}
+
+/** Request cases are decided on the case itself; the resolution follows the decision. */
+export const DECISION_TYPES: CaseRecord['type'][] = ['license_expiry', 'authorization', 'delegation', 'iban'];
+export const isDecisionCase = (c: Pick<CaseRecord, 'type'>) => DECISION_TYPES.includes(c.type);
+
+const NO_DECISION = 'No decision recorded yet — resolution can’t be set.';
+
+export function evaluateRequirements(c: CaseRecord): Requirement[] {
+  switch (c.type) {
+    case 'edd':
+      return evaluateEddRequirements(c);
+    case 'coc': {
+      const docs = impactedSigningDocuments(c);
+      const configurationOpen = c.coc?.changes.some((x) => x.action === 'configuration') && docs.length > 0;
+      if (!configurationOpen) return [];
+      return [
+        {
+          key: 'coc',
+          label: 'Detected Changes',
+          heading: 'Signing authority must be updated',
+          detail: `${docs.length} document${docs.length === 1 ? '' : 's'} still list${docs.length === 1 ? 's' : ''} a signatory who has left the company.`,
+          tab: 'ownership',
+          anchor: 'signing',
+          blocksAll: true,
+        },
+      ];
+    }
+    case 'zatca_expiry':
+      return c.zatcaExpiry?.renewed
+        ? []
+        : [{ key: 'zatca_renewal', label: 'ZATCA Certificate', heading: 'No renewed ZATCA certificate', detail: 'Retrieving ZATCA Certificate — retry the retrieval until a renewed certificate is found.', tab: 'overview', anchor: 'zatca-retrieval' }];
+    case 'license_expiry': {
+      const le = c.licenseExpiry;
+      if (!le?.renewed)
+        return [{ key: 'borrower_task', label: 'Borrower Task', heading: 'Renewed license not uploaded', detail: 'The borrower has not uploaded a renewed Activity License yet.', tab: 'overview', anchor: 'borrower-task', blocksAll: true }];
+      if (!c.decision)
+        return [{ key: 'borrower_task', label: 'Borrower Task', heading: 'Renewed license not decided', detail: 'The renewed activity license must be approved or rejected before the case can be closed.', tab: 'overview', anchor: 'renewed-license', blocksAll: true }];
+      return [];
+    }
+    case 'authorization':
+      return c.decision ? [] : [{ key: 'decision', label: 'Authorization permissions', heading: 'Authorization not decided', detail: NO_DECISION, tab: 'overview', anchor: 'auth-permissions', blocksAll: true }];
+    case 'delegation':
+      return c.decision ? [] : [{ key: 'decision', label: 'Delegators', heading: 'Delegation not decided', detail: NO_DECISION, tab: 'overview', anchor: 'delegators', blocksAll: true }];
+    case 'iban':
+      return c.decision ? [] : [{ key: 'decision', label: 'IBAN', heading: 'IBAN not decided', detail: NO_DECISION, tab: 'overview', anchor: 'iban', blocksAll: true }];
+  }
 }

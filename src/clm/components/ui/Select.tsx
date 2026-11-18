@@ -9,6 +9,11 @@ export interface Option {
   /** Rendered instead of label in the list. */
   render?: ReactNode;
   hint?: string;
+  /** Group heading shown above the first option of each group (MultiSelect). */
+  group?: string;
+  disabled?: boolean;
+  /** Small note on the right of a disabled option. */
+  note?: string;
 }
 
 interface BaseProps {
@@ -123,7 +128,7 @@ export function MultiSelect({
             {value.map((v) => {
               const o = options.find((x) => x.value === v);
               return (
-                <span key={v} className="bidi inline-flex items-center gap-1 rounded-md border border-line bg-surface-sunken px-2 py-0.5 text-xs">
+                <span key={v} className={clsx('bidi inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs', o?.disabled ? 'border-red-200 bg-red-50 text-red-700 line-through' : 'border-line bg-surface-sunken')}>
                   {o?.label ?? v}
                   {!disabled && (
                     <button
@@ -150,15 +155,20 @@ export function MultiSelect({
         {searchable && <SearchBox value={q} onChange={setQ} placeholder="Search…" />}
         <div className="max-h-64 overflow-auto py-1">
           {shown.length === 0 && <div className="px-3 py-2 text-sm text-ink-muted">No results</div>}
-          {shown.map((o) => {
+          {shown.map((o, i) => {
             const on = value.includes(o.value);
+            const heading = o.group && o.group !== shown[i - 1]?.group ? <div className="px-3 pb-1 pt-2 text-2xs font-semibold uppercase tracking-wide text-ink-muted">{o.group}</div> : null;
             return (
-              <button key={o.value} type="button" onClick={() => toggleValue(o.value)} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-surface-sunken">
+              <div key={o.value}>
+              {heading}
+              <button type="button" disabled={o.disabled} onClick={() => toggleValue(o.value)} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-surface-sunken disabled:cursor-not-allowed disabled:text-ink-faint disabled:hover:bg-transparent">
                 <span className={clsx('flex h-4 w-4 shrink-0 items-center justify-center rounded border', on ? 'border-ink bg-ink text-white' : 'border-neutral-300')}>
                   {on && <Check className="h-3 w-3" />}
                 </span>
                 <span className="bidi flex-1">{o.render ?? o.label}</span>
+                {o.note && <span className="text-2xs text-ink-muted">{o.note}</span>}
               </button>
+              </div>
             );
           })}
         </div>

@@ -3,6 +3,7 @@
 
 import { amlOverall, evaluateRequirements } from '@/domain/eddRules';
 import type { TourCtx } from '../tours/types';
+import { PHASE2_SCENARIOS } from './scenariosPhase2';
 
 export interface PracticeTask {
   id: string;
@@ -177,7 +178,7 @@ export const SCENARIOS: PracticeScenario[] = [
     tasks: [
       { id: 'vat', label: 'Enter the VAT number 310245678900003', hint: 'VAT & Zakat Certificate → pencil icon.', check: (c) => c.caseOf('CS-1907')?.edd.zatca.data?.vatNumber === '310245678900003' },
       { id: 'signing', label: 'Configure signing authority', hint: 'Ownership & Management → View Bot Result → Apply AOA result.', check: (c) => c.caseOf('CS-1907') !== undefined && !reqs(c, 'CS-1907').includes('signing') },
-      { id: 'closed', label: 'Close the case as Approved with a resolution reason', hint: 'Status → Closed → Approved → reason → Done.', check: (c) => c.caseOf('CS-1907')?.status === 'closed' && c.caseOf('CS-1907')?.resolution === 'approved' },
+      { id: 'closed', label: 'Close the case as Approved', hint: 'Status → Closed → Approved → Done. The approval reason is optional.', check: (c) => c.caseOf('CS-1907')?.status === 'closed' && c.caseOf('CS-1907')?.resolution === 'approved' },
     ],
     fail: (c) => (c.caseOf('CS-1907')?.resolution === 'rejected' ? 'The case was closed as Rejected. Nothing in the scenario justified a rejection. Restart to try again.' : undefined),
     solution: ['VAT pencil → 310245678900003 → Save.', 'Ownership & Management → View Bot Result → Apply AOA result.', 'Status → Closed → Approved → reason → Done.'],
@@ -204,5 +205,7 @@ export const SCENARIOS: PracticeScenario[] = [
     relatedArticle: 'resolution',
   },
 ];
+
+SCENARIOS.push(...PHASE2_SCENARIOS);
 
 export const scenarioById = (id: string) => SCENARIOS.find((s) => s.id === id);

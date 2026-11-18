@@ -5,6 +5,7 @@
 import { evaluateRequirements } from '@/domain/eddRules';
 import { useQueueUi } from '@/store/queueUiStore';
 import type { Tour, TourCtx } from './types';
+import { PHASE2_TOURS } from './toursPhase2';
 
 const focusQueueOn = (caseId: string) => () => useQueueUi.setState({ search: caseId, view: 'table', filters: {}, page: 1 });
 const onCase = (id: string) => new RegExp(`^/cases/${id}(\\?|$)`);
@@ -270,10 +271,7 @@ export const TOURS: Tour[] = [
         id: 'existing',
         target: 'license-1',
         route: '/cases/CS-1851?tab=license',
-        done: (ctx) => {
-          const l = ctx.caseOf('CS-1851')?.edd.licenses[0];
-          return !!l?.category && !!l?.authority;
-        },
+        done: (ctx) => !reqKeys(ctx, 'CS-1851').includes('licenses'),
       },
       {
         id: 'add',
@@ -354,5 +352,7 @@ export const TOURS: Tour[] = [
     ],
   },
 ];
+
+TOURS.push(...PHASE2_TOURS);
 
 export const tourById = (id: string) => TOURS.find((t) => t.id === id);

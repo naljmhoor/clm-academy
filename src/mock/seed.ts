@@ -20,7 +20,8 @@ import type {
   Stakeholder,
   User,
 } from '@/domain/types';
-import { CAPEX_SIGNING_DOCUMENTS, ISSUING_AUTHORITIES, LICENSE_CATEGORIES, SCF_SIGNING_DOCUMENTS, STANDARD_SIGNING_DOCUMENTS } from './masterData';
+import { authoritiesFor, CAPEX_SIGNING_DOCUMENTS, LICENSE_CATEGORIES, SCF_SIGNING_DOCUMENTS, STANDARD_SIGNING_DOCUMENTS } from './masterData';
+import { applyLifecycle, type LifecycleVariant } from './seedLifecycle';
 import { generateAddress, generateBotSuggestions, generateKyb, generateWorkforce, generateZatca } from './integrations';
 import { createRng, type Rng } from './rng';
 
@@ -131,6 +132,8 @@ interface Preset {
   kycGood?: boolean;
   corporateOwner?: boolean;
   workforce?: boolean;
+  /** SCF companies only: whether the SCF authorization matrix is enabled (default true). */
+  scfEnabled?: boolean;
 }
 
 const HAPPY: Scenario = {
@@ -184,9 +187,12 @@ function buildEdd(entity: Entity, p: Preset, r: Rng, createdAt: number): EddData
     groups.push({ id: 'capex', label: 'CapEx Financing' });
     documents.push(...CAPEX_SIGNING_DOCUMENTS.map((d) => ({ ...d, groupId: 'capex', required: false, signatoryIds: [] })));
   }
-  if (p.products?.includes('scf')) {
-    groups.push({ id: 'scf', label: 'SCF authorization matrix' });
-    documents.push(...SCF_SIGNING_DOCUMENTS.map((d) => ({ ...d, groupId: 'scf', required: false, signatoryIds: [] })));
+  // ASQ-5971: the SCF matrix exists only for SCF companies with the matrix enabled, and is then mandatory.
+  entity.products = p.products;
+  if (p.products?.includes('scf')) entity.scfMatrixEnabled = p.scfEnabled ?? true;
+  if (entity.scfMatrixEnabled) {
+    groups.push({ id: 'scf', label: 'SCF authorization matrix', mode: 'or' });
+    documents.push(...SCF_SIGNING_DOCUMENTS.map((d) => ({ ...d, groupId: 'scf', required: true, signatoryIds: [] })));
   }
   const suggestions = generateBotSuggestions(stakeholders, documents.filter((d) => !d.groupId).map((d) => d.id));
   if (p.signingDone) {
@@ -194,6 +200,7 @@ function buildEdd(entity: Entity, p: Preset, r: Rng, createdAt: number): EddData
       const doc = documents.find((d) => d.id === s.documentId);
       if (doc) doc.signatoryIds = s.signatories.map((x) => x.stakeholderId);
     }
+    for (const d of documents) if (d.groupId === 'scf') d.signatoryIds = [persons[0].id];
   }
 
   const licenseCount = p.borrowerLicenses ?? 0;
@@ -203,7 +210,9 @@ function buildEdd(entity: Entity, p: Preset, r: Rng, createdAt: number): EddData
     origin: 'borrower',
     file: fileRef(i === 0 ? 'Commercial_Registration.pdf' : `Activity_License_${i + 1}.pdf`, createdAt - 30 * HOUR, r),
     category: p.licensesDone ? LICENSE_CATEGORIES[i % 3] : undefined,
-    authority: p.licensesDone ? ISSUING_AUTHORITIES[i % 2] : undefined,
+    authority: p.licensesDone ? authoritiesFor(LICENSE_CATEGORIES[i % 3])[0] : undefined,
+    issueDate: p.licensesDone ? new Date(createdAt - 200 * 24 * HOUR).toISOString().slice(0, 10) : undefined,
+    expiryDate: p.licensesDone ? new Date(createdAt + 500 * 24 * HOUR).toISOString().slice(0, 10) : undefined,
   }));
 
   const jobAt = iso(createdAt + 2 * HOUR);
@@ -291,7 +300,10 @@ function seedActivity(c: { id: string; createdAt: number; status: CaseStatus; as
   const out: ActivityEntry[] = [
     { id: `${c.id}-a0`, at: iso(c.createdAt), actorId: 'system', action: 'created the case from CRM', detail: c.id },
   ];
-  if (c.status !== 'open') {
+  if (c.status === 'on_hold') {
+    out.push({ id: `${c.id}-a1`, at: iso(c.createdAt + 26 * HOUR), actorId: 'system', action: 'changed the case status (system migration)', from: 'Open', to: 'On Hold', detail: 'Migration: EDD cases that were never started were placed On Hold. SLA paused.' });
+  }
+  if (c.status !== 'open' && c.status !== 'on_hold') {
     out.push({ id: `${c.id}-a1`, at: iso(c.createdAt + 1.5 * HOUR), actorId: c.assigneeId ?? 'u-faisal', action: 'changed the case status', from: 'Open', to: 'In Progress' });
   }
   if (c.status === 'need_info') {
@@ -325,7 +337,7 @@ const HERO_PRESETS: { id: string; preset: Preset; priority: Priority; assigneeId
   // Missing information: SPL failed, AML pending review, AOA unavailable, Masdr flaky.
   { id: 'CS-1845', priority: 'high', assigneeId: 'u-trainee', ageHours: 58, preset: { status: 'in_progress', jobs: true, aml: 'pending_review', borrowerLicenses: 2, products: ['capex'], corporateOwner: true, scenario: { ...HAPPY, spl: 'fail', shortAddress: 'fail_then_success', masdr: 'fail_then_success', aoa: 'unavailable', zatca: 'no_vat' } } },
   // Complete & close: only signing authority and one license remain.
-  { id: 'CS-1843', priority: 'medium', assigneeId: 'u-trainee', ageHours: 30, preset: { status: 'in_progress', jobs: true, borrowerLicenses: 1, products: ['scf'], workforce: true, scenario: HAPPY } },
+  { id: 'CS-1843', priority: 'medium', assigneeId: 'u-trainee', ageHours: 30, preset: { status: 'in_progress', jobs: true, borrowerLicenses: 1, workforce: true, scenario: HAPPY } },
   { id: 'CS-1841', priority: 'medium', assigneeId: 'u-reem', ageHours: 40, preset: { status: 'need_info', jobs: true, addressDone: true, signingDone: true, borrowerLicenses: 1, scenario: HAPPY } },
   { id: 'CS-1839', priority: 'low', assigneeId: 'u-lama', ageHours: 70, preset: { status: 'closed', resolution: 'approved', jobs: true, signingDone: true, licensesDone: true, borrowerLicenses: 1, workforce: true, scenario: HAPPY } },
   { id: 'CS-1837', priority: 'high', assigneeId: 'u-omar', ageHours: 90, preset: { status: 'closed', resolution: 'rejected', jobs: true, aml: 'pending_review', scenario: HAPPY } },
@@ -386,10 +398,83 @@ export function createSeed(): SeedData {
       ageHours = r.int(2, 24 * 9);
     }
 
+    cases.push(buildCase({ id, entity, preset, priority, assigneeId, ageHours, r, now }));
+  }
+
+  // Phase II: lifecycle / request case types, On Hold EDD cases and the SCF-disabled demo company.
+  const r2 = createRng(20261118);
+  EXTRA_CASES.forEach((x, k) => {
+    const entity = makeEntity(total + k, r2);
+    entities.push(entity);
+    const preset: Preset = { status: x.status, jobs: x.status !== 'open' && x.status !== 'on_hold', signingDone: true, kycGood: true, scenario: HAPPY, resolution: x.resolution, ...x.preset };
+    if (x.lifecycle) preset.jobs = true;
+    const c = buildCase({ id: x.id, entity, preset, priority: x.priority, assigneeId: x.assigneeId, ageHours: x.ageHours, r: r2, now });
+    if (x.lifecycle) {
+      applyLifecycle(c, entity, x.lifecycle, r2, Date.parse(c.createdAt), k);
+      c.dueAt = new Date(Date.parse(c.createdAt) + LIFECYCLE_SLA_HOURS * HOUR).toISOString();
+      const first = c.activity[c.activity.length - 1];
+      c.activity[c.activity.length - 1] = { ...first, action: c.trigger?.initiatedBy === 'Borrower' ? 'created the case from a borrower request' : 'created the case', detail: c.trigger?.label };
+      if (c.resolution) c.resolutionReason = x.resolution === 'approved' ? '-' : (c.decision?.reason ?? 'Rejected after review.');
+    }
+    cases.push(c);
+  });
+
+  return { users: USERS, entities, cases };
+}
+
+const LIFECYCLE_SLA_HOURS = 48;
+
+interface ExtraCase {
+  id: string;
+  status: CaseStatus;
+  priority: Priority;
+  assigneeId?: string;
+  ageHours: number;
+  resolution?: 'approved' | 'rejected';
+  lifecycle?: LifecycleVariant;
+  preset?: Partial<Preset>;
+}
+
+/** Fixed Phase II cases used by tours (CS-20x1, CS-1861, CS-1863) and practice (CS-21xx). */
+const EXTRA_CASES: ExtraCase[] = [
+  { id: 'CS-2001', status: 'open', priority: 'high', ageHours: 4, lifecycle: { type: 'coc', scenario: 'signing' } },
+  { id: 'CS-2002', status: 'in_progress', priority: 'low', assigneeId: 'u-trainee', ageHours: 9, lifecycle: { type: 'coc', scenario: 'review' } },
+  { id: 'CS-2003', status: 'in_progress', priority: 'medium', assigneeId: 'u-reem', ageHours: 14, lifecycle: { type: 'coc', scenario: 'ownership' } },
+  { id: 'CS-2011', status: 'open', priority: 'medium', ageHours: 2, lifecycle: { type: 'zatca_expiry', script: ['failed', 'found'] } },
+  { id: 'CS-2012', status: 'in_progress', priority: 'medium', assigneeId: 'u-lama', ageHours: 20, lifecycle: { type: 'zatca_expiry', script: ['failed', 'found'] } },
+  { id: 'CS-2013', status: 'in_progress', priority: 'low', assigneeId: 'u-trainee', ageHours: 30, lifecycle: { type: 'zatca_expiry', script: ['none'] } },
+  { id: 'CS-2021', status: 'open', priority: 'medium', ageHours: 5, lifecycle: { type: 'license_expiry', stage: 'not_uploaded' } },
+  { id: 'CS-2022', status: 'in_progress', priority: 'high', assigneeId: 'u-reem', ageHours: 26, lifecycle: { type: 'license_expiry', stage: 'uploaded' } },
+  { id: 'CS-2023', status: 'closed', priority: 'medium', assigneeId: 'u-lama', ageHours: 60, resolution: 'approved', lifecycle: { type: 'license_expiry', stage: 'approved' } },
+  { id: 'CS-2031', status: 'open', priority: 'medium', ageHours: 3, lifecycle: { type: 'authorization', stage: 'pending' } },
+  { id: 'CS-2032', status: 'closed', priority: 'low', assigneeId: 'u-omar', ageHours: 70, resolution: 'approved', lifecycle: { type: 'authorization', stage: 'approved' } },
+  { id: 'CS-2041', status: 'open', priority: 'medium', ageHours: 3, lifecycle: { type: 'delegation', stage: 'pending' } },
+  { id: 'CS-2051', status: 'open', priority: 'high', ageHours: 6, lifecycle: { type: 'iban', stage: 'pending' } },
+  { id: 'CS-2052', status: 'closed', priority: 'medium', assigneeId: 'u-hind', ageHours: 50, resolution: 'rejected', lifecycle: { type: 'iban', stage: 'rejected' } },
+  // EDD: On Hold after the migration (ASQ-5973); compliance-documents walkthrough; SCF company with the matrix disabled.
+  { id: 'CS-1861', status: 'on_hold', priority: 'medium', ageHours: 200, preset: { borrowerLicenses: 1 } },
+  { id: 'CS-1863', status: 'in_progress', priority: 'medium', assigneeId: 'u-trainee', ageHours: 16, preset: { jobs: true } },
+  { id: 'CS-1865', status: 'on_hold', priority: 'low', ageHours: 260 },
+  { id: 'CS-1867', status: 'on_hold', priority: 'high', assigneeId: 'u-reem', ageHours: 300 },
+  { id: 'CS-1869', status: 'in_progress', priority: 'low', assigneeId: 'u-lama', ageHours: 10, preset: { jobs: true, products: ['scf'], scfEnabled: false } },
+  { id: 'CS-1871', status: 'in_progress', priority: 'medium', assigneeId: 'u-trainee', ageHours: 13, preset: { jobs: true, products: ['scf'], scfEnabled: true, signingDone: false } },
+  // Practice (src/training/practice/scenarios.ts)
+  { id: 'CS-2101', status: 'in_progress', priority: 'high', assigneeId: 'u-trainee', ageHours: 8, lifecycle: { type: 'coc', scenario: 'signing' } },
+  { id: 'CS-2102', status: 'in_progress', priority: 'medium', assigneeId: 'u-trainee', ageHours: 12, lifecycle: { type: 'zatca_expiry', script: ['failed', 'found'] } },
+  { id: 'CS-2103', status: 'in_progress', priority: 'medium', assigneeId: 'u-trainee', ageHours: 18, lifecycle: { type: 'license_expiry', stage: 'uploaded' } },
+  { id: 'CS-2104', status: 'in_progress', priority: 'medium', assigneeId: 'u-trainee', ageHours: 5, lifecycle: { type: 'authorization', stage: 'pending' } },
+  { id: 'CS-2105', status: 'in_progress', priority: 'medium', assigneeId: 'u-trainee', ageHours: 7, lifecycle: { type: 'delegation', stage: 'pending' } },
+  { id: 'CS-2106', status: 'in_progress', priority: 'high', assigneeId: 'u-trainee', ageHours: 9, lifecycle: { type: 'iban', stage: 'pending' } },
+  { id: 'CS-2107', status: 'on_hold', priority: 'medium', ageHours: 220 },
+  { id: 'CS-2108', status: 'in_progress', priority: 'medium', assigneeId: 'u-trainee', ageHours: 11, preset: { jobs: true } },
+];
+
+function buildCase({ id, entity, preset, priority, assigneeId, ageHours, r, now }: { id: string; entity: Entity; preset: Preset; priority: Priority; assigneeId?: string; ageHours: number; r: Rng; now: number }): CaseRecord {
+  {
     const createdAt = now - ageHours * HOUR;
     const edd = buildEdd(entity, preset, r, createdAt);
     const closedAt = preset.status === 'closed' ? Math.min(now - HOUR, createdAt + r.int(3, 80) * HOUR) : undefined;
-    const needInfoSince = preset.status === 'need_info' ? createdAt + 5 * HOUR : undefined;
+    const needInfoSince = preset.status === 'need_info' ? createdAt + 5 * HOUR : preset.status === 'on_hold' ? createdAt + 26 * HOUR : undefined;
 
     const comments: Comment[] = [];
     if (preset.status === 'need_info') {
@@ -440,8 +525,6 @@ export function createSeed(): SeedData {
       activity: seedActivity({ id, createdAt, status: preset.status, assigneeId, closedAt, resolution: preset.resolution, priority }),
       scenario: preset.scenario,
     };
-    cases.push(record);
+    return record;
   }
-
-  return { users: USERS, entities, cases };
 }

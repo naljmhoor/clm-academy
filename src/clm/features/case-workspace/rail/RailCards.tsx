@@ -86,7 +86,7 @@ export function SlaCard() {
           </Badge>
         </RailRow>
       )}
-      {s.paused && <p className="mt-2 text-xs text-ink-muted">SLA is paused while the case is in Need Info.</p>}
+      {s.paused && <p className="mt-2 text-xs text-ink-muted">{c.status === 'on_hold' ? 'SLA is paused while the case is On Hold. It resumes from where it stopped when the case moves to In Progress.' : 'SLA is paused while the case is in Need Info.'}</p>}
     </RailCard>
   );
 }
@@ -114,7 +114,7 @@ export function SystemRecordedCard() {
       <RailRow label="Created By">
         <span className="flex items-center gap-2">
           {creator ? <Avatar user={creator} size="sm" /> : null}
-          {creator?.name ?? 'System (CRM)'}
+          {creator?.name ?? (c.type === 'edd' ? 'System (CRM)' : c.trigger?.initiatedBy === 'Borrower' ? 'Borrower request' : 'System Automation')}
         </span>
       </RailRow>
       <RailRow label="Created Date">{fmtDateTime(c.createdAt)}</RailRow>

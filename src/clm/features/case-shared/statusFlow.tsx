@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { AlertCircle, ArrowRight, ChevronRight } from 'lucide-react';
 import type { CaseStatus, Resolution } from '@/domain/types';
 import { canTransition, STATUS_LABEL } from '@/domain/transitions';
-import { evaluateRequirements, type Requirement } from '@/domain/eddRules';
+import { evaluateRequirements, isDecisionCase, type Requirement } from '@/domain/eddRules';
 import { useCase, useClm } from '@/store/caseStore';
 import { Dialog } from '@/clm/components/ui/Dialog';
 import { Button } from '@/clm/components/ui/Button';
@@ -25,7 +25,12 @@ export const useStatusFlow = create<{ pending: Pending; request: (caseId: string
     const c = useClm.getState().cases.find((x) => x.id === caseId);
     if (!c || c.status === to || !canTransition(c.status, to)) return;
     if (to === 'need_info') return set({ pending: { caseId, kind: 'need_info' } });
-    if (to === 'closed') return set({ pending: { caseId, kind: 'close' } });
+    if (to === 'closed') {
+      // Items such as an undecided request block closing with any resolution.
+      const hard = evaluateRequirements(c).filter((r) => r.blocksAll);
+      if (hard.length) return set({ pending: { caseId, kind: 'blocked', requirements: hard } });
+      return set({ pending: { caseId, kind: 'close' } });
+    }
     useClm.getState().changeStatus(caseId, to);
   },
   clear: () => set({ pending: null }),
@@ -103,18 +108,21 @@ function CloseDialog({ caseId }: { caseId: string }) {
   const c = useCase(caseId)!;
   const { clear, set } = useStatusFlow();
   const closeCase = useClm((s) => s.closeCase);
-  const [resolution, setResolution] = useState<Resolution | ''>('');
-  const [reason, setReason] = useState('');
+  // Request cases: the resolution follows the decision already recorded on the case.
+  const fixed = isDecisionCase(c) ? c.decision?.outcome : undefined;
+  const [resolution, setResolution] = useState<Resolution | ''>(fixed ?? '');
+  const [reason, setReason] = useState(fixed === 'rejected' ? (c.decision?.reason ?? '') : '');
   const [touched, setTouched] = useState(false);
-  const errs = { resolution: touched && !resolution, reason: touched && !reason.trim() };
+  // ASQ-5954: the reason is optional when approving and mandatory when rejecting.
+  const reasonRequired = resolution === 'rejected';
+  const errs = { resolution: touched && !resolution, reason: touched && reasonRequired && !reason.trim() };
 
   const submit = () => {
     setTouched(true);
-    if (!resolution || !reason.trim()) return;
-    if (resolution === 'approved') {
-      const reqs = evaluateRequirements(c);
-      if (reqs.length) return set({ caseId, kind: 'blocked', requirements: reqs });
-    }
+    if (!resolution || (reasonRequired && !reason.trim())) return;
+    const reqs = evaluateRequirements(c);
+    const blocking = resolution === 'approved' ? reqs : reqs.filter((r) => r.blocksAll);
+    if (blocking.length) return set({ caseId, kind: 'blocked', requirements: blocking });
     closeCase(caseId, { resolution, reason: reason.trim() });
     clear();
   };
@@ -145,6 +153,7 @@ function CloseDialog({ caseId }: { caseId: string }) {
           <Select
             value={resolution}
             onChange={(v) => setResolution(v as Resolution)}
+            disabled={!!fixed}
             invalid={errs.resolution}
             placeholder="Select resolution"
             options={[
@@ -153,10 +162,20 @@ function CloseDialog({ caseId }: { caseId: string }) {
             ]}
           />
         </FormField>
-        <FormField label="Resolution reason" required error={errs.reason ? `A ${resolution === 'rejected' ? 'rejection' : 'resolution'} reason is required.` : undefined} htmlFor="resolution-reason">
+        {fixed && <p className="-mt-2 text-xs text-ink-muted">Set from the decision recorded on this case ({fixed === 'approved' ? 'Approved' : 'Rejected'}).</p>}
+        <FormField
+          label={resolution === 'approved' ? 'Approval reason (optional)' : resolution === 'rejected' ? 'Rejection reason' : 'Resolution reason'}
+          required={reasonRequired}
+          error={errs.reason ? 'A rejection reason is required.' : undefined}
+          htmlFor="resolution-reason"
+        >
           <TextArea id="resolution-reason" rows={4} value={reason} invalid={errs.reason} onChange={(e) => setReason(e.target.value)} placeholder="Summarise the evidence and the basis for this decision." />
         </FormField>
-        {resolution === 'approved' && <p className="text-xs text-ink-muted">Approval is only possible when every Required Before Closing item is complete.</p>}
+        {resolution === 'approved' && (
+          <p className="text-xs text-ink-muted">
+            The approval reason is optional. If you leave it empty, the resolution reason is recorded as "-".{c.type === 'edd' ? ' Approval is only possible when every Required Before Closing item is complete.' : ''}
+          </p>
+        )}
       </div>
     </Dialog>
   );

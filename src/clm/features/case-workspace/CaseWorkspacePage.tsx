@@ -2,6 +2,9 @@ import { useEffect, useMemo } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { CircleAlert } from 'lucide-react';
 import type { WorkspaceTab } from '@/domain/eddRules';
+import type { CaseRecord } from '@/domain/types';
+import { LifecycleOverview } from './lifecycle/LifecycleOverview';
+import { CaseTriggerCard } from './lifecycle/shared';
 import { useCase, useEntity } from '@/store/caseStore';
 import { useBreadcrumbs } from '@/clm/components/layout/crumbs';
 import { EmptyState, UnderlineTabs } from '@/clm/components/ui/misc';
@@ -15,12 +18,19 @@ import { DocumentsTab } from './tabs/DocumentsTab';
 import { ResolutionTab } from './tabs/ResolutionTab';
 import { CommentsActivity } from './sections/CommentsActivity';
 
-const TABS: { value: WorkspaceTab; label: string }[] = [
+type TabDef = { value: WorkspaceTab; label: string };
+const TABS: TabDef[] = [
   { value: 'overview', label: 'Overview' },
   { value: 'ownership', label: 'Ownership & Management' },
   { value: 'license', label: 'Activity License' },
   { value: 'documents', label: 'Documents' },
 ];
+
+function tabsFor(type: CaseRecord['type']): TabDef[] {
+  if (type === 'edd') return TABS;
+  if (type === 'coc') return TABS.filter((t) => t.value !== 'license');
+  return TABS.filter((t) => t.value === 'overview' || t.value === 'documents');
+}
 
 /** Scrolls to ?focus=<section id> and flashes it (used by Required Before Closing links). */
 function useFocusTarget(focus: string | null, tab: string) {
@@ -44,7 +54,8 @@ export function CaseWorkspacePage() {
   const entity = useEntity(c?.entityId);
   const [params, setParams] = useSearchParams();
   const closed = c?.status === 'closed';
-  const tabs = useMemo(() => (closed ? [...TABS, { value: 'resolution' as const, label: 'Resolution' }] : TABS), [closed]);
+  const type = c?.type ?? 'edd';
+  const tabs = useMemo(() => (closed ? [...tabsFor(type), { value: 'resolution' as const, label: 'Resolution' }] : tabsFor(type)), [closed, type]);
   const tabParam = params.get('tab') as WorkspaceTab | null;
   const tab: WorkspaceTab = tabs.some((t) => t.value === tabParam) ? tabParam! : closed ? 'resolution' : 'overview';
   const focus = params.get('focus');
@@ -72,7 +83,7 @@ export function CaseWorkspacePage() {
           <h1 className="text-2xl font-semibold" data-tour="case-id">
             {c.id}
           </h1>
-          <CaseTypeBadge />
+          <CaseTypeBadge type={c.type} />
           <span className="flex-1" />
           {!closed && <PriorityControl c={c} variant="header" />}
           <StatusControl c={c} variant="header" />
@@ -83,8 +94,8 @@ export function CaseWorkspacePage() {
             <div className="rounded-xl border border-line bg-white px-2 pt-2">
               <UnderlineTabs value={tab} onChange={(v) => setParams({ tab: v })} options={tabs.map((t) => ({ ...t, tour: `tab-${t.value}` }))} />
             </div>
-            <WorkforceFailureBanner />
-            {tab === 'overview' && <OverviewTab />}
+            {c.type === 'edd' && <WorkforceFailureBanner />}
+            {tab === 'overview' && (c.type === 'edd' ? <OverviewTab /> : <LifecycleOverview />)}
             {tab === 'ownership' && <OwnershipTab />}
             {tab === 'license' && <LicenseTab />}
             {tab === 'documents' && <DocumentsTab />}
@@ -93,9 +104,10 @@ export function CaseWorkspacePage() {
           </div>
           <aside className="sticky top-4 w-[320px] shrink-0 space-y-3" data-tour="case-rail">
             {closed ? <SystemRecordedCard /> : <RequiredBeforeClosingCard />}
+            <CaseTriggerCard />
             <SlaCard />
             <AssignmentCard />
-            <ConsentCard />
+            {c.type === 'edd' && <ConsentCard />}
           </aside>
         </div>
       </div>

@@ -201,3 +201,37 @@ Training-only behaviours, labelled in the UI:
 - The AML decision is made in a dialog on the case (live CLM uses the owner or company AML page).
 - The entity view is assembled from case data.
 - Ask CLM runs in knowledge-search mode.
+
+## 10. Phase II / IV — new case types and enhancements
+
+Sources: CLM BRD Phase II (UC001–UC009), CLM BRD Phase IV (UC001–UC003 = ASQ-5970/5971/5972), Jira ASQ-5954 and ASQ-5973, the reference screenshots and six screen recordings (CoC, ZATCA, Activity License Expiry CLM + borrower, Authorization, Delegation). Personal data visible in the recordings (names, IDs, phones, IBAN) was not copied; every value in the app is invented.
+
+### Discrepancies and decisions
+
+| # | Topic | Sources disagree / gap | Decision in CLM Academy |
+| --- | --- | --- | --- |
+| P1 | Closing request cases | BRD (UC006 AF3, UC007 AF1) says the case "is closed with resolution Rejected/Approved" on decision; recordings show the case still In Progress after deciding, closed manually with the Close dialog | Decision is recorded on the case; the trainee closes it. The Close dialog locks the resolution to the decision |
+| P2 | Close dialog for decision cases | Recording (AL Expiry) shows an empty "Select a resolution" after approving | Resolution pre-filled and locked from the decision to avoid contradictory outcomes — confirm with Product |
+| P3 | Authorization "Age" | BRD lists Age among displayed fields; screens don't show it | Not shown (screens are the UI reference) |
+| P4 | Permission counts | Screenshot "X of 14"; recording tree has 16 permissions and Delegation shows "of 16" | 16 permissions from the recorded tree |
+| P5 | Delegation primary permissions | Screenshot "4 of 5 requested", recording "3 of 7 requested" | 7 primary permissions (list includes CapEx and Corporate Guarantee) |
+| P6 | CoC replace-and-consolidate | BRD: a new change while a CoC case is pending deletes the old case and creates one consolidated case | Explained in the KB; not simulated (no case deletion in the trainer) |
+| P7 | CoC trigger label | Screens use "CR expired"; BRD creates a CoC case on CR expiry only when the refresh finds changes or can't validate | Trigger shown as "Wathq data changed" with the number of detected changes |
+| P8 | CoC subtitle bug | Screen shows "7 of 4 documents need updating" | Count computed from impacted documents |
+| P9 | ZATCA renewed dates | Static screenshot shows the same dates for expired and renewed certificates | Renewed certificate gets new dates (issue today, expiry +1 year) |
+| P10 | ZATCA reject path | BRD only describes retry → success → close | Approval blocked until renewed; closing as Rejected with a reason stays possible |
+| P11 | License master data | Construction lists "Municipalities / Amanahs" twice; ETEC has no category | De-duplicated; ETEC not offered |
+| P12 | Dependent dropdown when category changes | Not specified | Authority kept if still valid for the new category, auto-filled when only one option, cleared otherwise |
+| P13 | Facility Signing Limit validation | "Existing validations unchanged"; input rules not given | Positive number or empty (= No Limit) |
+| P14 | SCF matrix when disabled | Phase IV says the matrix appears only for SCF + enabled | Hidden; a note explains it is disabled for that SCF company |
+| P15 | On Hold metrics | ASQ-5973 quotes migration counts | Not shown as metrics (ticket says they are not live) |
+| P16 | "Move to In Progress before working" | Seen in the recordings for decisions; not in the BRD | Enforced for decisions, ZATCA retry, delegator edits and CoC signing saves |
+| P17 | Request Compliance Documents scope | Visible in Entity Profile and in EDD Documents "when the EDD is not closed"; CoC screens also show "Request documents" | Offered on EDD and CoC cases that are not closed, and on the Entity Profile |
+| P18 | Borrower side | Recording shows the Arabic borrower app; brief asked for a borrower reference | Simulated borrower view (Arabic layout) with the BRD SMS / app-notification texts; no screenshots of the real app embedded |
+| P19 | IBAN values | Screenshot shows a real-format IBAN | Fictional values marked "TEST" and masked by default |
+
+### Open questions added
+
+- Q-P1: Should deciding a Delegation / IBAN request close the case automatically (BRD) or keep it open for a manual close (recordings)?
+- Q-P2: For decision cases, may the admin choose a resolution different from the recorded decision?
+- Q-P3: Which permissions make up the authorization tree in production (14 vs 16)?

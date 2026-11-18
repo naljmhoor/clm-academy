@@ -5,7 +5,8 @@
 // When neither matches, it says so. A real model can be connected through ./client.ts.
 
 import type { CaseRecord } from '@/domain/types';
-import { evaluateRequirements } from '@/domain/eddRules';
+import { evaluateRequirements, isDecisionCase } from '@/domain/eddRules';
+import { CASE_TYPE_META } from '@/mock/masterData';
 import { articleById } from '../knowledge/articles';
 import { isArabic, searchArticles } from '../knowledge/search';
 import { TOUR_TITLES } from '../tours/tourTitles';
@@ -44,6 +45,26 @@ const cite = (id: string): Citation => {
   return { articleId: a.id, title: a.title, sources: a.sources.map((s) => `${s.doc} — ${s.section}`) };
 };
 
+/** Knowledge-base article that explains each case type. */
+const TYPE_ARTICLE: Record<CaseRecord['type'], string> = {
+  edd: 'edd-overview',
+  coc: 'coc',
+  zatca_expiry: 'zatca-expiry',
+  license_expiry: 'license-expiry',
+  authorization: 'authorization',
+  delegation: 'delegation',
+  iban: 'iban',
+};
+const TYPE_AR: Record<CaseRecord['type'], string> = {
+  edd: 'عناية واجبة',
+  coc: 'تغيّر ظروف',
+  zatca_expiry: 'انتهاء شهادة ZATCA',
+  license_expiry: 'انتهاء رخصة نشاط',
+  authorization: 'طلب صلاحيات',
+  delegation: 'طلب تفويض',
+  iban: 'مراجعة آيبان',
+};
+
 const APPROVAL_EN = /(why|can'?t|cannot|unable|not able|blocked|prevent|stop).*(approv|clos)|(approv|clos).*(blocked|disabled|not allowed|fail|error)/;
 const APPROVAL_AR = /(لماذا|لا استطيع|لا أستطيع|لا يمكن|ممنوع|ما المانع|مانع).*(اعتماد|اعتمد|اغلاق|إغلاق|اغلق|أغلق|قبول)/;
 const MISSING_EN = /(what('?s| is)? (missing|left|remaining|incomplete)|next step|what should i do|what do i need|to do)/;
@@ -69,32 +90,53 @@ export function answerQuestion(question: string, _ctx: AssistantContext, c?: Cas
         mode: 'knowledge-search',
       };
     }
-    const reqs = evaluateRequirements(c);
-    if (reqs.length === 0) {
+    const typeLabel = CASE_TYPE_META[c.type].label;
+    const typeCite = cite(TYPE_ARTICLE[c.type]);
+    if (c.status === 'on_hold') {
       return {
         answer: ar
-          ? `جميع المتطلبات الإلزامية في الحالة ${c.id} مكتملة. يمكنك إغلاقها بقرار القبول مع كتابة سبب القرار.`
-          : `Every mandatory requirement on ${c.id} is complete. You can close it as Approved — choose Closed in the status menu, select Approved and write the resolution reason.`,
+          ? `الحالة ${c.id} (${TYPE_AR[c.type]}) في وضع On Hold بسبب ترحيل النظام، والـ SLA متوقف. انقلها إلى In Progress لتبدأ العمل عليها؛ هذا الانتقال الوحيد المسموح.`
+          : `${c.id} is On Hold — the system migration paused it and its SLA. Move it to In Progress to work on it; that is the only transition allowed from On Hold, and the SLA resumes from where it stopped.`,
         status: 'answered',
-        citations: [cite('closing')],
+        citations: [cite('on-hold')],
+        actions: [],
+        mode: 'knowledge-search',
+      };
+    }
+    const reqs = evaluateRequirements(c);
+    if (reqs.length === 0) {
+      const decided = isDecisionCase(c) && c.decision;
+      return {
+        answer: decided
+          ? ar
+            ? `تم تسجيل القرار (${c.decision!.outcome === 'approved' ? 'Approved' : 'Rejected'}) على الحالة ${c.id}. أغلقها الآن: النتيجة تتبع القرار تلقائياً.`
+            : `A decision (${c.decision!.outcome === 'approved' ? 'Approved' : 'Rejected'}) is recorded on ${c.id}. Close the case now — the resolution is set from that decision${c.decision!.outcome === 'rejected' ? ' and the rejection reason is carried over' : ''}.`
+          : ar
+            ? `جميع المتطلبات الإلزامية في الحالة ${c.id} مكتملة. يمكنك إغلاقها بقرار Approved، وسبب الاعتماد اختياري.`
+            : `Every mandatory requirement on ${c.id} (${typeLabel}) is complete. You can close it as Approved — choose Closed in the status menu and select Approved. The approval reason is optional; if empty, "-" is recorded.`,
+        status: 'answered',
+        citations: [cite('closing'), typeCite],
         actions: [],
         mode: 'knowledge-search',
       };
     }
     for (const r of reqs.slice(0, 4)) actions.push({ label: `Go to ${r.label}`, route: `/cases/${c.id}?tab=${r.tab}&focus=${r.anchor}` });
+    const hard = reqs.some((r) => r.blocksAll);
     const intro =
       c.status === 'open'
         ? ar
-          ? `الحالة ${c.id} ما زالت مفتوحة. انقلها إلى "قيد المعالجة" لتشغيل الفحوصات الآلية. المتطلبات غير المكتملة حالياً (${reqs.length}):`
-          : `${c.id} is still Open — move it to In Progress first so the EDD jobs (SPL, ZATCA, AML, AOA) run. ${reqs.length} mandatory item${reqs.length === 1 ? ' is' : 's are'} incomplete right now:`
+          ? `الحالة ${c.id} (${TYPE_AR[c.type]}) ما زالت Open. انقلها إلى In Progress أولاً${c.type === 'edd' ? ' لتشغيل الفحوصات الآلية' : ' — القرارات وإعادة المحاولة تحتاج ذلك'}. المتطلبات غير المكتملة حالياً (${reqs.length}):`
+          : `${c.id} (${typeLabel}) is still Open — move it to In Progress first${c.type === 'edd' ? ' so the EDD jobs (SPL, ZATCA, AML, AOA) run' : '; decisions and retries only work while In Progress'}. ${reqs.length} mandatory item${reqs.length === 1 ? ' is' : 's are'} incomplete right now:`
         : ar
-          ? `لا يمكن اعتماد الحالة ${c.id} لأن ${reqs.length} من المتطلبات الإلزامية غير مكتملة:`
-          : `${c.id} can't be approved yet because ${reqs.length} mandatory requirement${reqs.length === 1 ? ' is' : 's are'} incomplete:`;
+          ? `لا يمكن ${hard ? 'إغلاق' : 'اعتماد'} الحالة ${c.id} (${TYPE_AR[c.type]}) لأن ${reqs.length} من المتطلبات الإلزامية غير مكتملة:`
+          : hard
+            ? `${c.id} (${typeLabel}) can't be closed with any resolution yet:`
+            : `${c.id} (${typeLabel}) can't be approved yet because ${reqs.length} mandatory requirement${reqs.length === 1 ? ' is' : 's are'} incomplete. You can still close it as Rejected with a reason:`;
     return {
       answer: intro,
       points: reqs.map((r) => `${r.label} — ${r.detail}`),
       status: 'answered',
-      citations: [cite('closing'), cite('edd-overview')],
+      citations: [cite('closing'), typeCite],
       actions,
       mode: 'knowledge-search',
     };
@@ -131,6 +173,18 @@ export function answerQuestion(question: string, _ctx: AssistantContext, c?: Cas
 }
 
 export function suggestedQuestions(ctx: AssistantContext, c?: CaseRecord): string[] {
+  if (c && c.status === 'on_hold') return [`What should I do with ${c.id}?`, 'What does On Hold mean?', 'ما معنى On Hold؟'];
+  if (c && c.status !== 'closed' && c.type !== 'edd') {
+    const typeQ: Record<string, string> = {
+      coc: 'What does Update configuration mean?',
+      zatca_expiry: 'What if ZATCA retrieval fails?',
+      license_expiry: 'What does the borrower see?',
+      authorization: 'How do I approve an authorization?',
+      delegation: 'How do I add a delegator?',
+      iban: 'When is an IBAN review created?',
+    };
+    return [`What do I need to do on ${c.id}?`, typeQ[c.type], 'Is the approval reason mandatory?', 'ماذا ينقص لإغلاق الحالة؟'];
+  }
   if (c && c.status !== 'closed') return [`Why can't I approve ${c.id}?`, 'What does Need Info do?', 'What does joint signing mean?', 'لماذا لا أستطيع اعتماد الحالة؟'];
   if (c) return ['What happens after I close a case?', 'What is in the activity log?'];
   if (ctx.module === 'case-queue') return ['How is SLA status calculated?', 'What are the case statuses?', 'How do cases enter CLM?'];
