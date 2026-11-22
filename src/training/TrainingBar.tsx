@@ -9,6 +9,7 @@ import { Dialog } from '@/clm/components/ui/Dialog';
 import { Button } from '@/clm/components/ui/Button';
 import { Toaster } from '@/clm/components/ui/misc';
 import { useAcademy } from './academyStore';
+import { TourLanguageSwitch } from './pages/AcademyPages';
 
 /**
  * Training layer chrome. Deliberately styled apart from the CLM UI (indigo strip)
@@ -55,6 +56,7 @@ export function TrainingBar() {
       </nav>
       <span className="hidden truncate text-white/70 xl:inline">Simulated environment · fictional data · no Manafa systems are called</span>
       <span className="flex-1" />
+      <TourLanguageSwitch variant="bar" />
       <Link to="/academy/kb" className="flex items-center gap-1 rounded px-2 py-1 font-medium hover:bg-white/15">
         <BookOpen className="h-3.5 w-3.5" />
         Knowledge Base

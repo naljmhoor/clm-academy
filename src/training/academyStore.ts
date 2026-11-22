@@ -29,6 +29,8 @@ interface AcademyState {
   helpHints: boolean;
   /** Language of the guided walkthroughs only; the CLM simulator stays in English. */
   tourLang: 'en' | 'ar';
+  /** True only after the trainee picked a language with a switch. Navigation never sets it. */
+  tourLangChosen: boolean;
 
   // Active session (persisted so a refresh resumes where the trainee was)
   activeTour: { id: string; step: number } | null;
@@ -45,6 +47,8 @@ interface AcademyState {
   exitTour: () => void;
 
   startPractice: (id: string) => void;
+  /** Re-open a started scenario without resetting its case or completed tasks. */
+  resumePractice: (id: string) => void;
   markTask: (scenarioId: string, taskId: string) => void;
   showHint: (scenarioId: string, taskId: string) => void;
   failPractice: (scenarioId: string, reason: string) => void;
@@ -70,6 +74,7 @@ export const useAcademy = create<AcademyState>()(
       welcomed: false,
       helpHints: true,
       tourLang: 'en',
+      tourLangChosen: false,
       activeTour: null,
       activePractice: null,
       assistantOpen: false,
@@ -100,6 +105,7 @@ export const useAcademy = create<AcademyState>()(
           activeTour: null,
           practice: { ...s.practice, [id]: { status: s.practice[id]?.status === 'completed' ? 'completed' : 'started', done: [], hintsShown: [], updatedAt: now() } },
         })),
+      resumePractice: (id) => set({ activePractice: id, activeTour: null }),
       markTask: (sid, taskId) =>
         set((s) => {
           const p = s.practice[sid];
@@ -119,14 +125,28 @@ export const useAcademy = create<AcademyState>()(
       openAssistant: (articleId = null) => set({ assistantOpen: true, assistantArticle: articleId }),
       closeAssistant: () => set({ assistantOpen: false, assistantArticle: null }),
       setHelpHints: (helpHints) => set({ helpHints }),
-      setTourLang: (tourLang) => set({ tourLang }),
+      // The only way the walkthrough language changes: an explicit choice in a language switch.
+      setTourLang: (tourLang) => set({ tourLang, tourLangChosen: true }),
       setWelcomed: () => set({ welcomed: true }),
       setLocation: (pathname, search) => set({ location: { pathname, search } }),
       resetProgress: () => set({ tours: {}, practice: {}, activeTour: null, activePractice: null }),
     }),
     {
       name: 'clm-academy:progress:v1',
-      partialize: (s) => ({ tours: s.tours, practice: s.practice, welcomed: s.welcomed, helpHints: s.helpHints, tourLang: s.tourLang, activeTour: s.activeTour, activePractice: s.activePractice }),
+      version: 2,
+      // v1 stored the language without recording whether the trainee chose it, so a stale value
+      // could reappear unexpectedly. Progress is kept; the language returns to English until chosen again.
+      migrate: (persisted, version) => {
+        const st = (persisted ?? {}) as Partial<AcademyState>;
+        if (version < 2) return { ...st, tourLang: 'en', tourLangChosen: false } as AcademyState;
+        return st as AcademyState;
+      },
+      // English unless an explicit choice was saved.
+      merge: (persisted, current) => {
+        const st = (persisted ?? {}) as Partial<AcademyState>;
+        return { ...current, ...st, tourLang: st.tourLangChosen ? (st.tourLang ?? 'en') : 'en', tourLangChosen: !!st.tourLangChosen };
+      },
+      partialize: (s) => ({ tours: s.tours, practice: s.practice, welcomed: s.welcomed, helpHints: s.helpHints, tourLang: s.tourLang, tourLangChosen: s.tourLangChosen, activeTour: s.activeTour, activePractice: s.activePractice }),
     },
   ),
 );

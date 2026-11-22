@@ -15,6 +15,7 @@ npm run build:html   # single self-contained file: dist-single/clm-academy.html
 ```
 
 - **Persistence:** cases and learning progress are kept in the browser's localStorage.
+- **Scenario catalog:** every walkthrough and practice scenario, grouped by case type, with Start, Continue, Restart and Exit. Nothing is locked; the suggested learning path on the home page is optional. Each item keeps its own progress, and restarting one resets only its own case.
 - **Reset data** (Academy bar) restores the cases. **Reset progress** (Academy home or Guided learning) clears tours and scenarios.
 - **Routing:** the app uses hash routing (`#/cases/...`), so it works from any static host and from a file on disk.
 
@@ -22,7 +23,7 @@ npm run build:html   # single self-contained file: dist-single/clm-academy.html
 
 | Area | Where |
 | --- | --- |
-| Academy home, Guided learning, Practice, Knowledge Base | `#/academy`, `#/academy/learn`, `#/academy/practice`, `#/academy/kb` |
+| Academy home, Scenario catalog (Guided learning), Practice, Knowledge Base | `#/academy`, `#/academy/learn`, `#/academy/practice`, `#/academy/kb` |
 | CLM simulator: Case Queue, Case Workspace, Entities, Entity view | `#/cases`, `#/cases/:id`, `#/entities`, `#/entities/:id` |
 | Ask CLM assistant | "Ask CLM" in the Academy bar; available on every page |
 | Contextual help | indigo **?** icons beside complex controls; toggle with "Help hints" |
@@ -75,7 +76,7 @@ docs/ANALYSIS.md source analysis, discrepancy log, open questions
 
 - **Structure and logic** live in `src/training/tours/tours.ts`: targets (`data-tour` anchors), routes, and `done(ctx)` / `wrong(ctx)` checks evaluated against live state.
 - **Wording** lives in `src/training/tours/content/en.ts` and `content/ar.ts`, keyed by the same tour and step ids. Shared controls (Back, Next, Skip, etc.) are in `i18n.ts`.
-- **Language:** trainees choose English or العربية in the tour card or on the Guided learning page. The choice is saved, and it changes the walkthrough text only; the CLM screens always stay in English. Arabic text keeps CLM labels such as Status and In Progress in English so they match the screen.
+- **Language:** one Academy setting (`tourLang` in `academyStore.ts`), changed only by the switch in the Academy bar, on the catalog page or in the tour card. English is the default; a choice is saved only when made with a switch, and navigation never changes it. It applies to the Academy home, catalog, practice titles and walkthroughs (practice task lists stay in English); the CLM screens always stay in English. Arabic text keeps CLM labels such as Status and In Progress in English so they match the screen.
 - **Missing translations** fall back to English with a console warning in development. A unit test fails if any step lacks Arabic text.
 - **Card placement** is handled by `placement.ts`. The card never covers the highlighted control, an open dropdown, a dialog or the Ask CLM panel. When no space fits, it docks to a screen corner, then narrows or collapses. The dim overlay never captures clicks on the highlighted control, and dropdowns and dialogs open above it.
 - **Adding a tour:** add anchors to the components, a config in `tours.ts`, and entries in both content files.

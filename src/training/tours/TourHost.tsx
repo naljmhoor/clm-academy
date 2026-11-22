@@ -15,7 +15,7 @@ import clsx from 'clsx';
 import { ArrowLeft, ArrowRight, Check, ChevronDown, ChevronUp, CircleAlert, GraduationCap, MousePointerClick, RotateCcw, X } from 'lucide-react';
 import { useClm } from '@/store/caseStore';
 import { useAcademy } from '../academyStore';
-import { TOURS, tourById } from './tours';
+import { tourById } from './tours';
 import { stepText, tourText, tourUi, type TourLang } from './i18n';
 import { placeCard, type Box, type Placement } from './placement';
 import type { TourCtx, TourStep } from './types';
@@ -203,7 +203,6 @@ function TourRunner({ tourId, stepIndex }: { tourId: string; stepIndex: number }
     setFinished(true);
   };
   const restart = () => startTour(tourId, 0);
-  const nextTour = TOURS[TOURS.findIndex((t) => t.id === tourId) + 1];
   const title = tourText(lang, tourId).title;
 
   if (finished) {
@@ -216,17 +215,16 @@ function TourRunner({ tourId, stepIndex }: { tourId: string; stepIndex: number }
           <h2 className="text-lg font-semibold">{ui.tourComplete}</h2>
           <p className="mt-1 text-sm text-ink-muted">{ui.completeBody(title)}</p>
           <div className="mt-5 flex flex-wrap justify-end gap-2">
-            <button type="button" className="h-9 rounded-md border border-line px-3 text-sm font-medium hover:bg-surface-sunken" onClick={() => (exitTour(), navigate('/academy/learn'))}>
+            <button type="button" className="h-9 rounded-md border border-line px-3 text-sm font-medium hover:bg-surface-sunken" onClick={() => (exitTour(), navigate('/academy'))}>
               {ui.backToAcademy}
             </button>
             <button type="button" className="h-9 rounded-md border border-line px-3 text-sm font-medium hover:bg-surface-sunken" onClick={() => exitTour()}>
               {ui.keepExploring}
             </button>
-            {nextTour && (
-              <button type="button" className="h-9 rounded-md bg-academy px-3 text-sm font-medium text-white hover:bg-academy/90" onClick={() => startTour(nextTour.id)}>
-                {ui.nextTour(tourText(lang, nextTour.id).title)}
-              </button>
-            )}
+            {/* No automatic next tour: the trainee picks what to do next from the catalog. */}
+            <button type="button" className="h-9 rounded-md bg-academy px-3 text-sm font-medium text-white hover:bg-academy/90" onClick={() => (exitTour(), navigate('/academy/learn'))}>
+              {ui.browseCatalog}
+            </button>
           </div>
         </div>
       </div>,

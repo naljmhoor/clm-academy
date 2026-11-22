@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { scenarioText } from '../catalog';
 import { useLocation, useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
 import { BookOpen, Check, ChevronDown, ChevronUp, CircleAlert, Dumbbell, Lightbulb, RotateCcw, X } from 'lucide-react';
@@ -33,6 +34,8 @@ function Panel({ scenarioId }: { scenarioId: string }) {
   const [open, setOpen] = useState(true);
   const [showSolution, setShowSolution] = useState(false);
   const [quizPick, setQuizPick] = useState<number | null>(null);
+  const lang = useAcademy((st) => st.tourLang);
+  const text = scenarioText(lang, s);
 
   const ctx = useCallback(
     (): TourCtx => ({
@@ -92,7 +95,7 @@ function Panel({ scenarioId }: { scenarioId: string }) {
     >
       <div className="flex items-center gap-2 rounded-t-xl bg-academy px-4 py-2 text-xs text-white">
         <Dumbbell className="h-3.5 w-3.5" />
-        <span className="flex-1 truncate font-medium">Practice · {s.title}</span>
+        <span className="flex-1 truncate font-medium" dir="auto">Practice · {text.title}</span>
         <button type="button" onClick={() => setOpen(!open)} aria-label={open ? 'Minimise' : 'Expand'} className="rounded p-0.5 hover:bg-white/15">
           {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}
         </button>
@@ -110,7 +113,7 @@ function Panel({ scenarioId }: { scenarioId: string }) {
             <span className="text-ink-muted">Case {s.caseId}</span>
           </div>
           <p className="mt-2 text-ink-soft">{s.context}</p>
-          <p className="mt-2 font-medium">Objective: {s.objective}</p>
+          <p className="mt-2 font-medium" dir="auto">Objective: {text.objective}</p>
 
           {progress?.failed ? (
             <div className="mt-3 rounded-md bg-red-50 px-3 py-2 text-red-800">
